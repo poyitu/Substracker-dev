@@ -15,6 +15,7 @@ import { lunarCalendar } from '../../core/lunar.js';
 import { formatTimeInTimezone, formatTimezoneDisplay } from '../../core/time.js';
 import { formatAmount } from '../../core/currency-format.js';
 import { extractTagsFromSubscriptions } from '../utils.js';
+import * as remindersRepo from '../../data/reminders.repo.js';
 
 async function testSingleSubscriptionNotification(id, env) {
   try {
@@ -91,7 +92,13 @@ async function handleSubscriptions(request, env, path) {
   if (path === '/subscriptions') {
     if (method === 'GET') {
       const subscriptions = await getAllSubscriptions(env);
-      return new Response(JSON.stringify(subscriptions), { headers: { 'Content-Type': 'application/json' } });
+      const withRules = await Promise.all(
+        subscriptions.map(async (s) => ({
+          ...s,
+          reminderRules: await remindersRepo.listForSubscription(env, s.id)
+        }))
+      );
+      return new Response(JSON.stringify(withRules), { headers: { 'Content-Type': 'application/json' } });
     }
 
     if (method === 'POST') {
@@ -172,6 +179,10 @@ async function handleSubscriptions(request, env, path) {
 
     if (method === 'GET') {
       const subscription = await getSubscription(id, env);
+      if (!subscription) {
+        return new Response(JSON.stringify({ success: false, message: '订阅不存在' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+      }
+      subscription.reminderRules = await remindersRepo.listForSubscription(env, id);
       return new Response(JSON.stringify(subscription), { headers: { 'Content-Type': 'application/json' } });
     }
 
