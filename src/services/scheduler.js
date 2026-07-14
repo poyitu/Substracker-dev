@@ -208,11 +208,22 @@ export async function checkExpiringSubscriptions(env) {
     const content = formatNotificationContent(enrichedSubs, config);
     const title = '订阅到期/续费提醒';
 
+    // 方案 C：若到期订阅中有自定义发件人配置，则用该配置覆盖全局默认值
+    const subWithCustomSender = ready.find((c) => c.sub.emailFrom);
+    const dispatchConfig = subWithCustomSender
+      ? {
+          ...config,
+          EMAIL_FROM: subWithCustomSender.sub.emailFrom,
+          EMAIL_FROM_NAME: subWithCustomSender.sub.emailFromName || config.EMAIL_FROM_NAME,
+          EMAIL_TO: subWithCustomSender.sub.emailTo || config.EMAIL_TO
+        }
+      : config;
+
     // 给 dispatch 提供主 subId+ruleId（聚合通知用第一条做归属）
     const primary = ready[0];
     const dispatchResult = await dispatch(
       { title, content },
-      config,
+      dispatchConfig,
       {
         env,
         subId: primary.sub.id,

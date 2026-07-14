@@ -192,6 +192,9 @@ async function createSubscription(subscription, env) {
       isActive: subscription.isActive !== false,
       autoRenew: subscription.autoRenew !== false,
       useLunar: useLunar,
+      emailFrom: subscription.emailFrom || '',
+      emailFromName: subscription.emailFromName || '',
+      emailTo: subscription.emailTo || '',
       createdAt: new Date().toISOString()
     };
 
