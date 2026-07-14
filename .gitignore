@@ -21,3 +21,4 @@ docs/
 .codebuddy/
 .trellis/
 AGENTS.md
+.wrangler/

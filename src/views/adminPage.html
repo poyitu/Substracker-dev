@@ -700,27 +700,25 @@
         <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
           <div class="flex items-center justify-between mb-3">
             <label class="block text-sm font-semibold text-gray-700">
-              <i class="fas fa-envelope text-indigo-500 mr-1"></i> 邮件发件人配置
+              <i class="fas fa-envelope text-indigo-500 mr-1"></i> 邮件发件人
               <span class="text-xs font-normal text-gray-500 ml-2">（留空则使用全局默认配置）</span>
             </label>
           </div>
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label for="emailFrom" class="block text-sm font-medium text-gray-700 mb-1">发件人邮箱</label>
-              <input type="email" id="emailFrom" placeholder="例如: alerts@example.com"
+              <label for="emailFrom" class="block text-sm font-medium text-gray-700 mb-1">自定义发件人邮箱</label>
+              <input type="email" id="emailFrom" placeholder="留空使用全局默认"
                 class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 text-sm">
             </div>
             <div>
-              <label for="emailFromName" class="block text-sm font-medium text-gray-700 mb-1">发件人名称</label>
-              <input type="text" id="emailFromName" placeholder="例如: 订阅提醒助手"
-                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 text-sm">
-            </div>
-            <div>
-              <label for="emailTo" class="block text-sm font-medium text-gray-700 mb-1">收件人邮箱</label>
-              <input type="email" id="emailTo" placeholder="例如: me@example.com"
+              <label for="emailTo" class="block text-sm font-medium text-gray-700 mb-1">自定义收件人邮箱</label>
+              <input type="email" id="emailTo" placeholder="留空使用全局默认"
                 class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 text-sm">
             </div>
           </div>
+          <p class="mt-2 text-xs text-gray-500">
+            发件人名称统一使用全局配置中的「发件人名称」。仅当需要为特定订阅使用不同邮箱/收件人时填写。
+          </p>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1390,12 +1388,23 @@ const lunarBiz = {
         : [];
       if (rules.length > 0) {
         const r = rules[0];
+        if (r.type === 'on_expiry') {
+          return { unit: 'day', value: 0, displayText: '仅到期' };
+        }
+        if (r.type === 'on_expiry_at') {
+          const hours = Array.isArray(r.hours) ? r.hours.filter((h) => h >= 0 && h <= 23) : [];
+          const displayText = hours.length > 0
+            ? '到期日 ' + hours.map((h) => String(h).padStart(2, '0') + ':00').join('、')
+            : '到期日指定时间';
+          return { unit: 'day', value: 0, displayText };
+        }
         const unit = r.unit === 'hour' ? 'hour' : 'day';
         const value = Number(r.value);
-        const displayText = r.type === 'on_expiry'
-          ? '仅到期'
-          : (unit === 'hour' ? '提前' + value + '小时' : '提前' + value + '天');
-        return { unit, value, displayText };
+        return {
+          unit,
+          value,
+          displayText: unit === 'hour' ? '提前' + value + '小时' : '提前' + value + '天'
+        };
       }
 
       const fallbackDays = subscription.reminderDays !== undefined ? subscription.reminderDays : 7;
@@ -1589,7 +1598,7 @@ const lunarBiz = {
         let statusHtml = '';
         if (!subscription.isActive) {
           statusHtml = '<span class="px-2 py-1 text-xs font-medium rounded-full text-white bg-gray-500"><i class="fas fa-pause-circle mr-1"></i>已停用</span>';
-        } else if (daysDiff < 0 || diffMs < 0) {
+        } else if (daysDiff < 0) {
           statusHtml = '<span class="px-2 py-1 text-xs font-medium rounded-full text-white bg-red-500"><i class="fas fa-exclamation-circle mr-1"></i>已过期</span>';
         } else if (isSoon) {
           statusHtml = '<span class="px-2 py-1 text-xs font-medium rounded-full text-white bg-yellow-500"><i class="fas fa-exclamation-triangle mr-1"></i>即将到期</span>';
@@ -1676,7 +1685,7 @@ const lunarBiz = {
         const lunarHtml = lunarExpiryText ? createHoverText('农历: ' + lunarExpiryText, 25, 'text-xs text-blue-600 mt-1') : '';
 
         let daysLeftText = '';
-        if (diffMs < 0) {
+        if (daysDiff < 0) {
           const absDays = Math.abs(daysDiff);
           if (absDays >= 1) {
             daysLeftText = '已过期' + absDays + '天';
@@ -1702,12 +1711,18 @@ const lunarBiz = {
         let reminderHtml;
         if (rulesForDisplay.length > 0) {
           reminderHtml = rulesForDisplay.map((r) => {
-            const txt = r.type === 'on_expiry'
-              ? '仅到期'
-              : (r.unit === 'hour' ? '提前' + Number(r.value) + '小时' : '提前' + Number(r.value) + '天');
-            const extra = r.type === 'on_expiry'
-              ? '<div class="text-xs text-gray-500 mt-1">仅到期时提醒</div>'
-              : (r.unit === 'hour' ? '<div class="text-xs text-gray-500 mt-1">小时级提醒</div>' : '');
+            let txt, extra;
+            if (r.type === 'on_expiry') {
+              txt = '仅到期';
+              extra = '<div class="text-xs text-gray-500 mt-1">仅到期时提醒</div>';
+            } else if (r.type === 'on_expiry_at') {
+              const hours = Array.isArray(r.hours) ? r.hours.filter((h) => h >= 0 && h <= 23) : [];
+              txt = hours.length > 0 ? '到期日 ' + hours.map((h) => String(h).padStart(2, '0') + ':00').join('、') : '到期日指定时间';
+              extra = '<div class="text-xs text-gray-500 mt-1">固定时间提醒</div>';
+            } else {
+              txt = r.unit === 'hour' ? '提前' + Number(r.value) + '小时' : '提前' + Number(r.value) + '天';
+              extra = r.unit === 'hour' ? '<div class="text-xs text-gray-500 mt-1">小时级提醒</div>' : '';
+            }
             return '<div><i class="fas fa-bell mr-1"></i>' + txt + '</div>' + extra;
           }).join('');
         } else {
@@ -3266,7 +3281,7 @@ const lunarBiz = {
         reminderHours: reminderUnit === 'hour' ? reminderValue : undefined,
         useLunar: document.getElementById('useLunar').checked,
         emailFrom: document.getElementById('emailFrom').value.trim(),
-        emailFromName: document.getElementById('emailFromName').value.trim(),
+        emailFromName: '',
         emailTo: document.getElementById('emailTo').value.trim()
       };
       
@@ -3359,7 +3374,6 @@ const lunarBiz = {
           }
           document.getElementById('useLunar').checked = !!subscription.useLunar;
           document.getElementById('emailFrom').value = subscription.emailFrom || '';
-          document.getElementById('emailFromName').value = subscription.emailFromName || '';
           document.getElementById('emailTo').value = subscription.emailTo || '';
           
           clearFieldErrors();
@@ -3585,6 +3599,7 @@ const lunarBiz = {
       const RULE_TYPES = [
         { value: 'before_expiry', label: '到期前' },
         { value: 'on_expiry', label: '到期当天' },
+        { value: 'on_expiry_at', label: '到期日指定时间' },
         { value: 'after_expiry', label: '到期后' }
       ];
       const UNITS = [
@@ -3616,9 +3631,11 @@ const lunarBiz = {
 
       function renderRow(rule) {
         const isAfter = rule.type === 'after_expiry';
+        const isAt = rule.type === 'on_expiry_at';
         const wrap = document.createElement('div');
         wrap.className = 'flex flex-wrap items-center gap-2 bg-white rounded border border-gray-200 px-2 py-2';
         wrap.dataset.ruleId = rule.id;
+        const hours = Array.isArray(rule.hours) ? rule.hours.filter((h) => h >= 0 && h <= 23) : [];
         wrap.innerHTML = `
           <label class="inline-flex items-center text-xs">
             <input type="checkbox" class="rule-enabled mr-1 form-checkbox h-4 w-4 text-indigo-600" ${rule.isEnabled ? 'checked' : ''}>
@@ -3627,10 +3644,26 @@ const lunarBiz = {
           <select class="rule-type px-2 py-1 text-xs border border-gray-300 rounded bg-white">
             ${RULE_TYPES.map(t => `<option value="${t.value}" ${rule.type === t.value ? 'selected' : ''}>${t.label}</option>`).join('')}
           </select>
-          <input type="number" class="rule-value w-16 px-2 py-1 text-xs border border-gray-300 rounded ${rule.type === 'on_expiry' ? 'opacity-50' : ''}" value="${rule.value}" min="0" ${rule.type === 'on_expiry' ? 'disabled' : ''}>
-          <select class="rule-unit px-2 py-1 text-xs border border-gray-300 rounded bg-white ${rule.type === 'on_expiry' ? 'opacity-50' : ''}" ${rule.type === 'on_expiry' ? 'disabled' : ''}>
-            ${UNITS.map(u => `<option value="${u.value}" ${rule.unit === u.value ? 'selected' : ''}>${u.label}</option>`).join('')}
-          </select>
+          ${!isAt ? `
+            <input type="number" class="rule-value w-16 px-2 py-1 text-xs border border-gray-300 rounded ${rule.type === 'on_expiry' ? 'opacity-50' : ''}" value="${rule.value}" min="0" ${rule.type === 'on_expiry' ? 'disabled' : ''}>
+            <select class="rule-unit px-2 py-1 text-xs border border-gray-300 rounded bg-white ${rule.type === 'on_expiry' ? 'opacity-50' : ''}" ${rule.type === 'on_expiry' ? 'disabled' : ''}>
+              ${UNITS.map(u => `<option value="${u.value}" ${rule.unit === u.value ? 'selected' : ''}>${u.label}</option>`).join('')}
+            </select>
+          ` : `
+            <div class="rule-hours-wrap flex items-center gap-1 flex-wrap">
+              ${hours.map((h, i) => `
+                <select class="rule-hour w-16 px-1 py-1 text-xs border border-gray-300 rounded bg-white">
+                  ${Array.from({ length: 24 }, (_, k) => `<option value="${k}" ${h === k ? 'selected' : ''}>${String(k).padStart(2, '0')}:00</option>`).join('')}
+                </select>
+                <button type="button" class="rule-hour-remove text-xs text-red-600 hover:bg-red-50 rounded px-1" data-idx="${i}">
+                  <i class="fas fa-times"></i>
+                </button>
+              `).join('')}
+              <button type="button" class="rule-hour-add text-xs px-2 py-1 text-indigo-600 hover:bg-indigo-50 rounded">
+                <i class="fas fa-plus"></i> 添加
+              </button>
+            </div>
+          `}
           ${isAfter ? `
             <span class="text-xs text-gray-500">每</span>
             <input type="number" class="rule-repeat-interval w-16 px-2 py-1 text-xs border border-gray-300 rounded" value="${rule.repeatInterval || 24}" min="1">
@@ -3647,12 +3680,38 @@ const lunarBiz = {
         wrap.querySelector('.rule-type').addEventListener('change', () => {
           rule.type = wrap.querySelector('.rule-type').value;
           if (rule.type === 'after_expiry' && rule.repeatInterval == null) rule.repeatInterval = 24;
+          if (rule.type === 'on_expiry_at' && (!rule.hours || rule.hours.length === 0)) {
+            rule.hours = [9];
+          }
           render();
         });
         wrap.querySelector('.rule-delete').addEventListener('click', () => {
           rules = rules.filter(r => r.id !== rule.id);
           render();
         });
+        if (isAt) {
+          wrap.querySelector('.rule-hour-add').addEventListener('click', () => {
+            rule.hours = rule.hours || [];
+            rule.hours.push(9);
+            render();
+          });
+          wrap.querySelectorAll('.rule-hour-remove').forEach(btn => {
+            btn.addEventListener('click', () => {
+              const idx = Number(btn.dataset.idx);
+              rule.hours = rule.hours || [];
+              rule.hours.splice(idx, 1);
+              render();
+            });
+          });
+          wrap.querySelectorAll('.rule-hour').forEach(sel => {
+            sel.addEventListener('change', () => {
+              const idx = Array.from(wrap.querySelectorAll('.rule-hour')).indexOf(sel);
+              rule.hours = rule.hours || [];
+              rule.hours[idx] = Number(sel.value);
+              render();
+            });
+          });
+        }
         return wrap;
       }
 
@@ -3666,8 +3725,14 @@ const lunarBiz = {
           if (!rule) return;
           rule.isEnabled = row.querySelector('.rule-enabled').checked;
           rule.type = row.querySelector('.rule-type').value;
-          rule.value = Math.max(0, Number(row.querySelector('.rule-value').value) || 0);
-          rule.unit = row.querySelector('.rule-unit').value;
+          if (rule.type === 'on_expiry_at') {
+            const selects = row.querySelectorAll('.rule-hour');
+            rule.hours = Array.from(selects).map(s => Number(s.value)).filter(h => h >= 0 && h <= 23);
+          } else {
+            rule.value = Math.max(0, Number(row.querySelector('.rule-value').value) || 0);
+            rule.unit = row.querySelector('.rule-unit').value;
+            rule.hours = [];
+          }
           if (rule.type === 'after_expiry') {
             const ri = row.querySelector('.rule-repeat-interval');
             const ru = row.querySelector('.rule-repeat-until');
@@ -3698,15 +3763,26 @@ const lunarBiz = {
 
       // 把规则数据装载进编辑器
       function setRules(input) {
-        rules = (Array.isArray(input) ? input : []).map(r => ({
-          id: r.id || uuid(),
-          type: r.type || 'before_expiry',
-          value: typeof r.value === 'number' ? r.value : 7,
-          unit: r.unit || 'days',
-          repeatInterval: r.repeatInterval == null ? null : Number(r.repeatInterval),
-          repeatUntil: r.repeatUntil || 'renewed',
-          isEnabled: r.isEnabled !== false
-        }));
+        rules = (Array.isArray(input) ? input : []).map(r => {
+          const type = ['before_expiry', 'on_expiry', 'on_expiry_at', 'after_expiry'].includes(r.type)
+            ? r.type
+            : 'before_expiry';
+          const hours = Array.isArray(r.hours)
+            ? r.hours.filter((h) => Number.isFinite(h) && h >= 0 && h <= 23).map((h) => Math.floor(h))
+            : type === 'on_expiry_at'
+              ? [9]
+              : [];
+          return {
+            id: r.id || uuid(),
+            type,
+            value: typeof r.value === 'number' ? r.value : 7,
+            unit: r.unit || 'days',
+            hours,
+            repeatInterval: r.repeatInterval == null ? null : Number(r.repeatInterval),
+            repeatUntil: r.repeatUntil || 'renewed',
+            isEnabled: r.isEnabled !== false
+          };
+        });
         render();
       }
 

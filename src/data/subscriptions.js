@@ -346,6 +346,9 @@ async function updateSubscription(id, subscription, env) {
             ? existing.autoRenew
             : true,
       useLunar: useLunar,
+      emailFrom: subscription.emailFrom !== undefined ? subscription.emailFrom : existing.emailFrom || '',
+      emailFromName: subscription.emailFromName !== undefined ? subscription.emailFromName : existing.emailFromName || '',
+      emailTo: subscription.emailTo !== undefined ? subscription.emailTo : existing.emailTo || '',
       updatedAt: new Date().toISOString()
     };
 

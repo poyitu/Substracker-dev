@@ -18,14 +18,18 @@ import * as remindersRepo from '../../src/data/reminders.repo.js';
 import { getRecent } from '../../src/data/scheduler-logs.repo.js';
 import { query as queryNotifyLogs } from '../../src/data/notification-logs.repo.js';
 
+const testEnv = /** @type {import('cloudflare:test').ProvidedEnv & { SUBSCRIPTIONS_KV: import('@cloudflare/workers-types').KVNamespace }} */ (env);
+
 async function clearKv() {
-  const list = await env.SUBSCRIPTIONS_KV.list();
-  await Promise.all(list.keys.map((k) => env.SUBSCRIPTIONS_KV.delete(k.name)));
+  const list = await testEnv.SUBSCRIPTIONS_KV.list();
+  await Promise.all(list.keys.map((k) => testEnv.SUBSCRIPTIONS_KV.delete(k.name)));
 }
 
-/** 写入一条系统配置 */
+/** 写入一条系统配置
+ * @param {Record<string, unknown>} cfg
+ */
 async function setConfig(cfg) {
-  await env.SUBSCRIPTIONS_KV.put('config', JSON.stringify(cfg));
+  await testEnv.SUBSCRIPTIONS_KV.put('config', JSON.stringify(cfg));
 }
 
 /** mock fetch 返回 Telegram 成功 */
@@ -66,7 +70,7 @@ describe('调度器 - 时区 + 通知时段', () => {
     });
 
     // 一条订阅，5 月 31 日北京时间到期，距今 7 天
-    await subRepo.save(env, {
+    await subRepo.save(testEnv, {
       id: 's-netflix',
       name: 'Netflix',
       isActive: true,
@@ -78,12 +82,12 @@ describe('调度器 - 时区 + 通知时段', () => {
       reminderUnit: 'day',
       reminderValue: 7
     });
-    await remindersRepo.replaceForSubscription(env, 's-netflix', [
+    await remindersRepo.replaceForSubscription(testEnv, 's-netflix', [
       remindersRepo.normalizeRule({ type: 'before_expiry', value: 7, unit: 'days' })
     ]);
 
     const fetchSpy = mockTelegramOk();
-    const log = await checkExpiringSubscriptions(env);
+    const log = /** @type {import('../../src/data/scheduler-logs.repo.js').SchedulerLogEntry} */ (await checkExpiringSubscriptions(testEnv));
     expect(log.status).toBe('ok');
     expect(log.sentCount).toBe(1);
     expect(log.matchedCount).toBe(1);
@@ -105,7 +109,7 @@ describe('调度器 - 时区 + 通知时段', () => {
       TG_BOT_TOKEN: 'B',
       TG_CHAT_ID: 'C'
     });
-    await subRepo.save(env, {
+    await subRepo.save(testEnv, {
       id: 's-x',
       name: 'X',
       isActive: true,
@@ -117,7 +121,7 @@ describe('调度器 - 时区 + 通知时段', () => {
     });
 
     const fetchSpy = mockTelegramOk();
-    const log = await checkExpiringSubscriptions(env);
+    const log = /** @type {import('../../src/data/scheduler-logs.repo.js').SchedulerLogEntry} */ (await checkExpiringSubscriptions(testEnv));
     expect(log.status).toBe('skipped');
     expect(log.inWindow).toBe(false);
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -136,14 +140,14 @@ describe('调度器 - 时区 + 通知时段', () => {
       TG_BOT_TOKEN: 'B',
       TG_CHAT_ID: 'C'
     });
-    await subRepo.save(env, {
+    await subRepo.save(testEnv, {
       id: 's-multi',
       name: 'Multi',
       isActive: true,
       autoRenew: false,
       expiryDate: '2026-05-27T03:00:00.000Z'
     });
-    await remindersRepo.replaceForSubscription(env, 's-multi', [
+    await remindersRepo.replaceForSubscription(testEnv, 's-multi', [
       remindersRepo.normalizeRule({ type: 'before_expiry', value: 7, unit: 'days' }),
       remindersRepo.normalizeRule({ type: 'before_expiry', value: 3, unit: 'days' }),
       remindersRepo.normalizeRule({ type: 'before_expiry', value: 1, unit: 'days' }),
@@ -151,7 +155,7 @@ describe('调度器 - 时区 + 通知时段', () => {
     ]);
 
     mockTelegramOk();
-    const log = await checkExpiringSubscriptions(env);
+    const log = /** @type {import('../../src/data/scheduler-logs.repo.js').SchedulerLogEntry} */ (await checkExpiringSubscriptions(testEnv));
     expect(log.matchedCount).toBe(1); // 只命中 value=3
     expect(log.sentCount).toBe(1);
     expect(log.extra.candidates).toHaveLength(1);
@@ -169,24 +173,24 @@ describe('调度器 - 时区 + 通知时段', () => {
       TG_BOT_TOKEN: 'B',
       TG_CHAT_ID: 'C'
     });
-    await subRepo.save(env, {
+    await subRepo.save(testEnv, {
       id: 's-dedupe',
       name: 'Dedupe',
       isActive: true,
       autoRenew: false,
       expiryDate: '2026-05-25T03:00:00.000Z'
     });
-    await remindersRepo.replaceForSubscription(env, 's-dedupe', [
+    await remindersRepo.replaceForSubscription(testEnv, 's-dedupe', [
       remindersRepo.normalizeRule({ type: 'before_expiry', value: 1, unit: 'days' })
     ]);
 
     const fetchSpy = mockTelegramOk();
 
-    const log1 = await checkExpiringSubscriptions(env);
+    const log1 = /** @type {import('../../src/data/scheduler-logs.repo.js').SchedulerLogEntry} */ (await checkExpiringSubscriptions(testEnv));
     expect(log1.sentCount).toBe(1);
     expect(log1.dedupedCount).toBe(0);
 
-    const log2 = await checkExpiringSubscriptions(env);
+    const log2 = /** @type {import('../../src/data/scheduler-logs.repo.js').SchedulerLogEntry} */ (await checkExpiringSubscriptions(testEnv));
     expect(log2.sentCount).toBe(0);
     expect(log2.dedupedCount).toBe(1);
     expect(log2.matchedCount).toBe(1);
@@ -205,22 +209,91 @@ describe('调度器 - 时区 + 通知时段', () => {
       TG_BOT_TOKEN: 'B',
       TG_CHAT_ID: 'C'
     });
-    await subRepo.save(env, {
+    await subRepo.save(testEnv, {
       id: 's-wc',
       name: 'WC',
       isActive: true,
       autoRenew: false,
       expiryDate: '2026-05-25T03:00:00.000Z'
     });
-    await remindersRepo.replaceForSubscription(env, 's-wc', [
+    await remindersRepo.replaceForSubscription(testEnv, 's-wc', [
       remindersRepo.normalizeRule({ type: 'before_expiry', value: 1, unit: 'days' })
     ]);
 
     mockTelegramOk();
-    const log = await checkExpiringSubscriptions(env);
+    const log = /** @type {import('../../src/data/scheduler-logs.repo.js').SchedulerLogEntry} */ (await checkExpiringSubscriptions(testEnv));
     expect(log.inWindow).toBe(true);
     expect(log.configuredHours).toEqual(['*']);
     expect(log.sentCount).toBe(1);
+  });
+
+  it('场景6：规则自带 hours 优先于全局 NOTIFICATION_HOURS → 仍发送', async () => {
+    // 北京 5/24 08:00，全局时段只配了 [20]（晚上 8 点）
+    // 但规则是 on_expiry_at + hours=[8]，应该在北京 8 点触发
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-24T00:00:00.000Z'));
+
+    await setConfig({
+      JWT_SECRET: 's',
+      TIMEZONE: 'Asia/Shanghai',
+      NOTIFICATION_HOURS: ['20'], // 全局只允许 20 点发
+      ENABLED_NOTIFIERS: ['telegram'],
+      TG_BOT_TOKEN: 'B',
+      TG_CHAT_ID: 'C'
+    });
+
+    // 订阅今天到期（5/24），规则是 on_expiry_at hours=[8]
+    await subRepo.save(testEnv, {
+      id: 's-priority',
+      name: 'Priority',
+      isActive: true,
+      autoRenew: false,
+      expiryDate: '2026-05-24T03:00:00.000Z' // 北京 5/24 11:00 → 当天
+    });
+    await remindersRepo.replaceForSubscription(testEnv, 's-priority', [
+      remindersRepo.normalizeRule({ type: 'on_expiry_at', value: 0, unit: 'days', hours: [8] })
+    ]);
+
+    mockTelegramOk();
+    const log = /** @type {import('../../src/data/scheduler-logs.repo.js').SchedulerLogEntry} */ (await checkExpiringSubscriptions(testEnv));
+    // 规则有自己的 hours，不受全局 [20] 限制
+    expect(log.inWindow).toBe(false); // 全局窗口仍是 false
+    expect(log.sentCount).toBe(1); // 但规则优先，仍发送
+    expect(log.extra.globalWindowSkippedCount).toBe(0);
+  });
+
+  it('场景7：规则无 hours + 全局时段不匹配 → 跳过', async () => {
+    // 北京 5/24 08:00，全局时段 [20]
+    // 规则是 before_expiry（无 hours），应该被全局时段拦截
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-24T00:00:00.000Z'));
+
+    await setConfig({
+      JWT_SECRET: 's',
+      TIMEZONE: 'Asia/Shanghai',
+      NOTIFICATION_HOURS: ['20'],
+      ENABLED_NOTIFIERS: ['telegram'],
+      TG_BOT_TOKEN: 'B',
+      TG_CHAT_ID: 'C'
+    });
+
+    await subRepo.save(testEnv, {
+      id: 's-fallback',
+      name: 'Fallback',
+      isActive: true,
+      autoRenew: false,
+      expiryDate: '2026-05-31T03:00:00.000Z' // 7 天后
+    });
+    await remindersRepo.replaceForSubscription(testEnv, 's-fallback', [
+      remindersRepo.normalizeRule({ type: 'before_expiry', value: 7, unit: 'days' })
+    ]);
+
+    mockTelegramOk();
+    const log = /** @type {import('../../src/data/scheduler-logs.repo.js').SchedulerLogEntry} */ (await checkExpiringSubscriptions(testEnv));
+    expect(log.inWindow).toBe(false);
+    expect(log.status).toBe('skipped');
+    expect(log.sentCount).toBe(0);
+    expect(log.extra.globalWindowSkippedCount).toBe(1);
   });
 });
 
@@ -235,7 +308,7 @@ describe('调度器 - 自动续订', () => {
       NOTIFICATION_HOURS: [],
       ENABLED_NOTIFIERS: []
     });
-    await subRepo.save(env, {
+    await subRepo.save(testEnv, {
       id: 's-renew',
       name: 'Renew',
       isActive: true,
@@ -249,12 +322,18 @@ describe('调度器 - 自动续订', () => {
       paymentHistory: []
     });
 
-    const log = await checkExpiringSubscriptions(env);
+    const log = /** @type {import('../../src/data/scheduler-logs.repo.js').SchedulerLogEntry} */ (await checkExpiringSubscriptions(testEnv));
     expect(log.autoRenewedCount).toBe(1);
 
-    const next = await subRepo.getById(env, 's-renew');
+    const next = await subRepo.getById(testEnv, 's-renew');
+    if (!next) {
+      throw new Error('Renew subscription not found');
+    }
+    // @ts-ignore
     expect(new Date(next.expiryDate).getTime()).toBeGreaterThan(Date.now());
+    // @ts-ignore
     expect(next.paymentHistory.length).toBeGreaterThan(0);
+    // @ts-ignore
     expect(next.paymentHistory[next.paymentHistory.length - 1].type).toBe('auto');
   });
 });
@@ -268,8 +347,8 @@ describe('调度器 - 写入日志', () => {
       ENABLED_NOTIFIERS: []
     });
 
-    await checkExpiringSubscriptions(env);
-    const logs = await getRecent(env, 5);
+    await checkExpiringSubscriptions(testEnv);
+    const logs = await getRecent(testEnv, 5);
     expect(logs).toHaveLength(1);
   });
 
@@ -284,21 +363,21 @@ describe('调度器 - 写入日志', () => {
       TG_BOT_TOKEN: 'B',
       TG_CHAT_ID: 'C'
     });
-    await subRepo.save(env, {
+    await subRepo.save(testEnv, {
       id: 's-log',
       name: 'L',
       isActive: true,
       autoRenew: false,
       expiryDate: '2026-05-25T03:00:00.000Z'
     });
-    await remindersRepo.replaceForSubscription(env, 's-log', [
+    await remindersRepo.replaceForSubscription(testEnv, 's-log', [
       remindersRepo.normalizeRule({ type: 'before_expiry', value: 1, unit: 'days' })
     ]);
 
     mockTelegramOk();
-    await checkExpiringSubscriptions(env);
+    await checkExpiringSubscriptions(testEnv);
 
-    const notifyLogs = await queryNotifyLogs(env, { subId: 's-log' });
+    const notifyLogs = await queryNotifyLogs(testEnv, { subId: 's-log' });
     expect(notifyLogs).toHaveLength(1);
     expect(notifyLogs[0].channel).toBe('telegram');
     expect(notifyLogs[0].status).toBe('success');

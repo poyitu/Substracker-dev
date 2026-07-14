@@ -12,6 +12,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 // @ts-ignore
 import { env } from 'cloudflare:test';
 
+const testEnv = /** @type {import('cloudflare:test').ProvidedEnv & { SUBSCRIPTIONS_KV: import('@cloudflare/workers-types').KVNamespace }} */ (env);
+
 import { escapeMarkdownV2 } from '../../../src/services/notify/channel.js';
 import { telegramChannel } from '../../../src/services/notify/telegram.js';
 import { notifyxChannel } from '../../../src/services/notify/notifyx.js';
@@ -25,7 +27,10 @@ import { webhookChannel } from '../../../src/services/notify/webhook.js';
 import { dispatch, ALL_CHANNELS, testChannel } from '../../../src/services/notify/dispatch.js';
 import { query } from '../../../src/data/notification-logs.repo.js';
 
-/** 构造一个 Response */
+/** 构造一个 Response
+ * @param {unknown} body
+ * @param {ResponseInit & { status?: number }} [init={}]
+ */
 function jsonResponse(body, init = {}) {
   return new Response(JSON.stringify(body), {
     status: init.status || 200,
@@ -35,8 +40,9 @@ function jsonResponse(body, init = {}) {
 
 beforeEach(async () => {
   // 清空 KV
-  const list = await env.SUBSCRIPTIONS_KV.list();
-  await Promise.all(list.keys.map((k) => env.SUBSCRIPTIONS_KV.delete(k.name)));
+  const list = await testEnv.SUBSCRIPTIONS_KV.list();
+  // @ts-ignore — k 隐式 any
+  await Promise.all(list.keys.map((k) => testEnv.SUBSCRIPTIONS_KV.delete(k.name)));
 });
 
 afterEach(() => {
@@ -209,7 +215,7 @@ describe('barkChannel 自定义服务器 URL', () => {
 describe('webhookChannel 模板', () => {
   it('应用 {{title}} {{content}} 模板', async () => {
     const captured = vi.fn();
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
       captured(init);
       return new Response('ok', { status: 200 });
     });
@@ -229,7 +235,7 @@ describe('webhookChannel 模板', () => {
 
   it('模板格式错误 → 退回默认结构', async () => {
     const captured = vi.fn();
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
       captured(init);
       return new Response('ok', { status: 200 });
     });
@@ -290,10 +296,10 @@ describe('dispatch（多渠道并发 + 日志）', () => {
     await dispatch(
       { title: 'T', content: 'C' },
       config,
-      { env, subId: 'sub-x', ruleId: 'rule-y' }
+      { env: testEnv, subId: 'sub-x', ruleId: 'rule-y' }
     );
 
-    const logs = await query(env, { subId: 'sub-x' });
+    const logs = await query(testEnv, { subId: 'sub-x' });
     expect(logs).toHaveLength(1);
     expect(logs[0].channel).toBe('telegram');
     expect(logs[0].status).toBe('success');

@@ -1,4 +1,6 @@
 // @ts-check
+import { getTimezoneDateParts, getTimestampForTimezoneParts } from '../../core/time.js';
+
 /**
  * 提醒规则触发引擎
  *
@@ -27,6 +29,7 @@
  * @property {number} hoursDiff 距到期小时数（可为负数 = 已过期小时数）
  * @property {string} [lastFireAtIso] 同一规则上次触发的 ISO 时间（用于 after_expiry 重复间隔）
  * @property {string} [nowIso] 当前 ISO 时间，默认 new Date().toISOString()
+ * @property {number} [currentHour] 用户 TZ 下的当前小时（0-23），on_expiry_at 专用
  */
 
 /**
@@ -57,6 +60,8 @@ export function shouldFire(rule, ctx) {
       return decideBeforeExpiry(rule, ctx);
     case 'on_expiry':
       return decideOnExpiry(rule, ctx);
+    case 'on_expiry_at':
+      return decideOnExpiryAt(rule, ctx);
     case 'after_expiry':
       return decideAfterExpiry(rule, ctx);
     default:
@@ -117,6 +122,27 @@ function decideOnExpiry(rule, ctx) {
  * @param {FireContext} ctx
  * @returns {FireDecision}
  */
+function decideOnExpiryAt(rule, ctx) {
+  if (ctx.daysDiff !== 0) {
+    return { fire: false, reason: `days_diff=${ctx.daysDiff}_not_today` };
+  }
+  const hours = Array.isArray(rule.hours) ? rule.hours.filter((h) => h >= 0 && h <= 23) : [];
+  if (hours.length === 0) {
+    return { fire: false, reason: 'no_hours_configured' };
+  }
+  // 优先使用调用方传入的用户 TZ 小时，避免 new Date(iso).getHours() 在 Workers 里拿到 UTC 小时
+  const currentHour = ctx.currentHour != null ? ctx.currentHour : new Date(ctx.nowIso || Date.now()).getHours();
+  if (hours.includes(currentHour)) {
+    return { fire: true, reason: `on_expiry_at_hour_${currentHour}` };
+  }
+  return { fire: false, reason: `current_hour_${currentHour}_not_in_${hours.join(',')}` };
+}
+
+/**
+ * @param {ReminderRule} rule
+ * @param {FireContext} ctx
+ * @returns {FireDecision}
+ */
 function decideAfterExpiry(rule, ctx) {
   if (ctx.daysDiff >= 0) return { fire: false, reason: 'not_expired_yet' };
 
@@ -149,9 +175,10 @@ function decideAfterExpiry(rule, ctx) {
  * @param {ReminderRule} rule
  * @param {string} expiryDateIso 订阅到期日 ISO
  * @param {string} [nowIso] 当前时间 ISO（默认 now）
+ * @param {string} [timezone='UTC'] 用户时区，on_expiry_at 按此解释 hours 数组
  * @returns {string|null} 下次触发的 ISO 时间，或 null（规则已禁用/不再触发）
  */
-export function getNextFireTime(rule, expiryDateIso, nowIso) {
+export function getNextFireTime(rule, expiryDateIso, nowIso, timezone = 'UTC') {
   if (!rule || rule.isEnabled === false) return null;
 
   const expiry = new Date(expiryDateIso).getTime();
@@ -173,6 +200,26 @@ export function getNextFireTime(rule, expiryDateIso, nowIso) {
 
   if (rule.type === 'on_expiry') {
     return expiry >= now ? new Date(expiry).toISOString() : null;
+  }
+
+  if (rule.type === 'on_expiry_at') {
+    const hours = Array.isArray(rule.hours)
+      ? rule.hours.filter((h) => Number.isFinite(h) && h >= 0 && h <= 23).map((h) => Math.floor(h))
+      : [];
+    if (hours.length === 0) return null;
+    // 按用户 TZ 取到期日当天的年月日，再反推该日 00:00 的 UTC 时间戳
+    const expiryParts = getTimezoneDateParts(new Date(expiryDateIso), timezone);
+    const expiryDayTs = getTimestampForTimezoneParts(
+      { year: expiryParts.year, month: expiryParts.month, day: expiryParts.day, hour: 0, minute: 0, second: 0 },
+      timezone
+    );
+    for (const h of hours) {
+      const fireAt = expiryDayTs + h * MS_HOUR;
+      if (fireAt >= now) {
+        return new Date(fireAt).toISOString();
+      }
+    }
+    return null;
   }
 
   if (rule.type === 'after_expiry') {

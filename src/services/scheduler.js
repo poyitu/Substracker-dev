@@ -123,7 +123,7 @@ export async function checkExpiringSubscriptions(env) {
       }
 
       for (const rule of rules) {
-        const decision = shouldFire(rule, { daysDiff, hoursDiff, nowIso: now.utc.toISOString() });
+        const decision = shouldFire(rule, { daysDiff, hoursDiff, nowIso: now.utc.toISOString(), currentHour: now.parts.hour });
         if (!decision.fire) continue;
         matchedCount++;
         candidates.push({ sub: subscription, rule, daysDiff, hoursDiff });
@@ -136,33 +136,20 @@ export async function checkExpiringSubscriptions(env) {
       console.log(`[定时任务] 已自动续订 ${updatedSubsToSave.length} 个订阅`);
     }
 
-    // 不在通知时段 → 写日志后返回
-    if (!inWindow) {
-      const entry = await schedulerLogsRepo.writeLog(env, {
-        startedAt: startedAtIso,
-        finishedAt: new Date().toISOString(),
-        timezone,
-        currentHour: now.hourString,
-        configuredHours: normalizedHours,
-        inWindow: false,
-        checkedCount: activeCount,
-        matchedCount,
-        dedupedCount: 0,
-        sentCount: 0,
-        autoRenewedCount,
-        status: 'skipped',
-        reason: `当前用户 TZ 小时 ${now.hourString} 不在配置时段 [${normalizedHours.join(',') || '空'}] 内`
-      });
-      return entry;
-    }
-
-    // 在时段：去重 + 发送
+    // 在时段（或规则自带 hours）：去重 + 发送
     /** @type {Array<{ sub: any, rule: any, daysDiff: number, hoursDiff: number }>} */
     const ready = [];
     const ymdhLocal = `${now.parts.year}${String(now.parts.month).padStart(2, '0')}${String(
       now.parts.day
     ).padStart(2, '0')}${now.hourString}`;
+    let globalWindowSkippedCount = 0;
     for (const c of candidates) {
+      // 规则优先：规则有自己的 hours 配置时，不应用全局时段
+      const ruleHasHours = Array.isArray(c.rule.hours) && c.rule.hours.length > 0;
+      if (!ruleHasHours && !inWindow) {
+        globalWindowSkippedCount++;
+        continue;
+      }
       const dedupeKey = `notify_dedupe:${c.sub.id}:${c.rule.id}:${ymdhLocal}`;
       const exists = await env.SUBSCRIPTIONS_KV.get(dedupeKey);
       if (exists) {
@@ -180,7 +167,7 @@ export async function checkExpiringSubscriptions(env) {
         timezone,
         currentHour: now.hourString,
         configuredHours: normalizedHours,
-        inWindow: true,
+        inWindow,
         checkedCount: activeCount,
         matchedCount,
         dedupedCount,
@@ -189,14 +176,20 @@ export async function checkExpiringSubscriptions(env) {
         status: matchedCount > 0 ? 'skipped' : 'ok',
         reason:
           matchedCount > 0
-            ? `命中 ${matchedCount} 条规则但全部在去重窗口内（跳过 ${dedupedCount}）`
-            : '本次未命中任何提醒规则'
+            ? `命中 ${matchedCount} 条规则：去重跳过 ${dedupedCount}，全局时段跳过 ${globalWindowSkippedCount}`
+            : '本次未命中任何提醒规则',
+        extra: { globalWindowSkippedCount }
       });
       return entry;
     }
 
     // 排序：按剩余天数升序，更紧迫的在前
     ready.sort((a, b) => a.daysDiff - b.daysDiff);
+
+    // 是否有规则 hours 优先发送（全局窗口 false 但仍有通知发出）
+    const ruleHoursPriorityUsed = ready.some(
+      (c) => Array.isArray(c.rule.hours) && c.rule.hours.length > 0 && !inWindow
+    );
 
     // 一次性聚合所有订阅成一条通知（与既有渠道契约一致）
     // notify_log 按 (subId, ruleId, channel) 维度落，仍可细粒度查询
@@ -208,13 +201,12 @@ export async function checkExpiringSubscriptions(env) {
     const content = formatNotificationContent(enrichedSubs, config);
     const title = '订阅到期/续费提醒';
 
-    // 方案 C：若到期订阅中有自定义发件人配置，则用该配置覆盖全局默认值
-    const subWithCustomSender = ready.find((c) => c.sub.emailFrom);
+    // 若到期订阅中有自定义发件人/收件人邮箱，则覆盖全局对应配置
+    const subWithCustomSender = ready.find((c) => c.sub.emailFrom || c.sub.emailTo);
     const dispatchConfig = subWithCustomSender
       ? {
           ...config,
-          EMAIL_FROM: subWithCustomSender.sub.emailFrom,
-          EMAIL_FROM_NAME: subWithCustomSender.sub.emailFromName || config.EMAIL_FROM_NAME,
+          EMAIL_FROM: subWithCustomSender.sub.emailFrom || config.EMAIL_FROM,
           EMAIL_TO: subWithCustomSender.sub.emailTo || config.EMAIL_TO
         }
       : config;
@@ -245,7 +237,7 @@ export async function checkExpiringSubscriptions(env) {
       timezone,
       currentHour: now.hourString,
       configuredHours: normalizedHours,
-      inWindow: true,
+      inWindow,
       checkedCount: activeCount,
       matchedCount,
       dedupedCount,
@@ -254,7 +246,8 @@ export async function checkExpiringSubscriptions(env) {
       status: dispatchResult.failedCount > 0 && sentCount === 0 ? 'error' : 'ok',
       reason:
         dispatchResult.attempted > 0
-          ? `发送到 ${dispatchResult.attempted} 个渠道，成功 ${dispatchResult.successCount} / 失败 ${dispatchResult.failedCount}`
+          ? `发送到 ${dispatchResult.attempted} 个渠道，成功 ${dispatchResult.successCount} / 失败 ${dispatchResult.failedCount}` +
+            (ruleHoursPriorityUsed ? '（规则 hours 优先，全局窗口 false）' : '')
           : '未启用任何通知渠道',
       extra: {
         candidates: ready.map((c) => ({
@@ -265,7 +258,9 @@ export async function checkExpiringSubscriptions(env) {
           ruleValue: c.rule.value,
           daysDiff: c.daysDiff
         })),
-        channelResults: dispatchResult.channelResults
+        channelResults: dispatchResult.channelResults,
+        globalWindowSkippedCount,
+        ruleHoursPriorityUsed
       }
     });
     return entry;

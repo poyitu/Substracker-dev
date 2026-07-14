@@ -5,9 +5,10 @@
  * 数据结构：reminder_rules:{subId} = JSON 数组，每条规则形如：
  * {
  *   id: string,                                 // UUID
- *   type: 'before_expiry' | 'on_expiry' | 'after_expiry',
+ *   type: 'before_expiry' | 'on_expiry' | 'on_expiry_at' | 'after_expiry',
  *   value: number,                              // 数值（如 7）
  *   unit: 'days' | 'hours',
+ *   hours: number[],                            // 0-23；仅 on_expiry_at 用
  *   repeatInterval: number | null,              // 单位：小时；仅 after_expiry 用
  *   repeatUntil: 'renewed' | 'acknowledged' | 'never',
  *   isEnabled: boolean,
@@ -23,9 +24,10 @@ const KEY_PREFIX = 'reminder_rules:';
 /**
  * @typedef {Object} ReminderRule
  * @property {string} id
- * @property {'before_expiry'|'on_expiry'|'after_expiry'} type
+ * @property {'before_expiry'|'on_expiry'|'on_expiry_at'|'after_expiry'} type
  * @property {number} value
  * @property {'days'|'hours'} unit
+ * @property {number[]} [hours]                // 0-23；仅 on_expiry_at 用
  * @property {number|null} [repeatInterval]
  * @property {'renewed'|'acknowledged'|'never'} [repeatUntil]
  * @property {boolean} isEnabled
@@ -91,11 +93,14 @@ export function legacyFieldToRule(sub) {
  */
 export function normalizeRule(raw) {
   const r = raw || {};
-  const type = ['before_expiry', 'on_expiry', 'after_expiry'].includes(r.type)
+  const type = ['before_expiry', 'on_expiry', 'on_expiry_at', 'after_expiry'].includes(r.type)
     ? r.type
     : 'before_expiry';
   const unit = r.unit === 'hours' ? 'hours' : 'days';
   const value = Number.isFinite(r.value) && r.value >= 0 ? Math.floor(r.value) : 0;
+  const hours = Array.isArray(r.hours)
+    ? r.hours.filter((h) => Number.isFinite(h) && h >= 0 && h <= 23).map((h) => Math.floor(h))
+    : [];
   const repeatInterval =
     type === 'after_expiry' && Number.isFinite(r.repeatInterval) && r.repeatInterval > 0
       ? Math.floor(r.repeatInterval)
@@ -108,6 +113,7 @@ export function normalizeRule(raw) {
     type,
     value,
     unit,
+    hours,
     repeatInterval,
     repeatUntil,
     isEnabled: r.isEnabled !== false,

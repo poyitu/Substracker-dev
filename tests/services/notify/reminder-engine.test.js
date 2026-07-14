@@ -7,9 +7,11 @@ import { shouldFire } from '../../../src/services/notify/reminder-engine.js';
 
 /**
  * @param {Partial<import('../../../src/data/reminders.repo.js').ReminderRule>} r
+ * @returns {import('../../../src/data/reminders.repo.js').ReminderRule}
  */
 function rule(r) {
-  return {
+  /** @type {import('../../../src/data/reminders.repo.js').ReminderRule} */
+  const base = {
     id: 'r1',
     type: 'before_expiry',
     value: 7,
@@ -17,9 +19,9 @@ function rule(r) {
     repeatInterval: null,
     repeatUntil: 'renewed',
     isEnabled: true,
-    createdAt: '2026-01-01T00:00:00Z',
-    ...r
+    createdAt: '2026-01-01T00:00:00Z'
   };
+  return { ...base, ...r };
 }
 
 describe('shouldFire 通用', () => {
@@ -98,6 +100,38 @@ describe('on_expiry', () => {
   it('daysDiff=-1（昨天到期）→ 不命中', () => {
     const r = rule({ type: 'on_expiry', value: 0, unit: 'days' });
     expect(shouldFire(r, { daysDiff: -1, hoursDiff: -24 }).fire).toBe(false);
+  });
+});
+
+describe('on_expiry_at', () => {
+  it('daysDiff=0 且当前小时在 hours 中 → 命中', () => {
+    const r = rule({ type: 'on_expiry_at', hours: [10, 14, 18] });
+    expect(shouldFire(r, { daysDiff: 0, hoursDiff: 1, currentHour: 10 }).fire).toBe(true);
+    expect(shouldFire(r, { daysDiff: 0, hoursDiff: 1, currentHour: 14 }).fire).toBe(true);
+  });
+
+  it('daysDiff=0 但当前小时不在 hours 中 → 不命中', () => {
+    const r = rule({ type: 'on_expiry_at', hours: [10, 14, 18] });
+    expect(shouldFire(r, { daysDiff: 0, hoursDiff: 1, currentHour: 9 }).fire).toBe(false);
+    expect(shouldFire(r, { daysDiff: 0, hoursDiff: 1, currentHour: 15 }).fire).toBe(false);
+  });
+
+  it('daysDiff!=0 → 不命中（不管小时）', () => {
+    const r = rule({ type: 'on_expiry_at', hours: [10] });
+    expect(shouldFire(r, { daysDiff: 1, hoursDiff: 24, currentHour: 10 }).fire).toBe(false);
+    expect(shouldFire(r, { daysDiff: -1, hoursDiff: -24, currentHour: 10 }).fire).toBe(false);
+  });
+
+  it('hours 为空 → 不命中', () => {
+    const r = rule({ type: 'on_expiry_at', hours: [] });
+    expect(shouldFire(r, { daysDiff: 0, hoursDiff: 1, currentHour: 10 }).fire).toBe(false);
+  });
+
+  it('未传入 currentHour 时 fallback 到 new Date(nowIso).getHours()（环境相关，不推荐依赖）', () => {
+    const r = rule({ type: 'on_expiry_at', hours: [2] });
+    // Node.js 环境 getHours() 返回本地时间，Workers 环境返回 UTC 小时；此处仅验证 fallback 存在
+    const result = shouldFire(r, { daysDiff: 0, hoursDiff: 1, nowIso: '2026-07-14T02:00:00.000Z' });
+    expect(result.reason).toMatch(/current_hour_\d+_not_in_2|on_expiry_at_hour_\d+/);
   });
 });
 

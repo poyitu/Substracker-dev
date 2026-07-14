@@ -58,7 +58,14 @@ async function testSingleSubscriptionNotification(id, env) {
 当前时区: ${formatTimezoneDisplay(timezone)}`;
 
     const tags = extractTagsFromSubscriptions([subscription]);
-    const notifyResult = await sendNotificationToAllChannels(title, commonContent, config, '[手动测试]', {
+    const testConfig = { ...config };
+    if (subscription.emailFrom) {
+      testConfig.EMAIL_FROM = subscription.emailFrom;
+    }
+    if (subscription.emailTo) {
+      testConfig.EMAIL_TO = subscription.emailTo;
+    }
+    const notifyResult = await sendNotificationToAllChannels(title, commonContent, testConfig, '[手动测试]', {
       env, subId: id, ruleId: 'manual-test',
       metadata: { tags }
     });
