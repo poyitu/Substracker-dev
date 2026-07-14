@@ -3,6 +3,28 @@ import { lunarCalendar } from '../../core/lunar.js';
 import { formatAmount } from '../../core/currency-format.js';
 
 function resolveReminderSetting(subscription) {
+  // 优先使用新规则系统中的单个规则（邮件展示用）
+  if (subscription && subscription.reminderRule) {
+    const rule = subscription.reminderRule;
+    if (rule.type === 'on_expiry_at') {
+      const hours = Array.isArray(rule.hours) && rule.hours.length > 0
+        ? rule.hours.map(String).join(',')
+        : String(rule.value || 0);
+      return { unit: 'hour', value: rule.value || 0, label: `到期日 ${hours} 点` };
+    } else if (rule.type === 'on_expiry') {
+      return { unit: 'day', value: 0, label: '到期当天' };
+    } else if (rule.type === 'after_expiry') {
+      return { unit: 'hour', value: rule.value || 0, label: `到期后每 ${rule.value || 0} 小时` };
+    } else {
+      // before_expiry
+      return {
+        unit: rule.unit === 'hours' ? 'hour' : 'day',
+        value: rule.value || 0,
+        label: `提前 ${rule.value || 0} ${rule.unit === 'hours' ? '小时' : '天'}`
+      };
+    }
+  }
+
   const defaultDays = subscription && subscription.reminderDays !== undefined ? Number(subscription.reminderDays) : 7;
   let unit = subscription && subscription.reminderUnit === 'hour' ? 'hour' : 'day';
 
@@ -81,12 +103,11 @@ function formatNotificationContent(subscriptions, config) {
       statusText = `将在 ${sub.daysRemaining} 天后到期`;
     }
 
-    const reminderSuffix = reminderSetting.value === 0
-      ? '（仅到期时提醒）'
-      : (reminderSetting.unit === 'hour' ? '（小时级提醒）' : '');
-    const reminderText = reminderSetting.unit === 'hour'
-      ? `提醒策略: 提前 ${reminderSetting.value} 小时${reminderSuffix}`
-      : `提醒策略: 提前 ${reminderSetting.value} 天${reminderSuffix}`;
+    const reminderText = reminderSetting.label
+      ? `提醒策略: ${reminderSetting.label}`
+      : (reminderSetting.unit === 'hour'
+        ? `提醒策略: 提前 ${reminderSetting.value} 小时`
+        : `提醒策略: 提前 ${reminderSetting.value} 天`);
 
     const calendarType = sub.useLunar ? '农历' : '公历';
     const autoRenewText = sub.autoRenew ? '是' : '否';
