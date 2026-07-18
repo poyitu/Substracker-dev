@@ -39,14 +39,17 @@ app.use('*', cors({
   origin: (origin, c) => {
     const env = c.env;
     if (env && env.ENVIRONMENT === 'production') {
-      return true;
+      return origin;
     }
     const allowed = [
       'http://localhost:8081',
       'http://localhost:19000',
       'http://localhost:19006',
     ];
-    return allowed.includes(origin) ? origin : false;
+    if (allowed.includes(origin)) {
+      return origin;
+    }
+    throw new Error('CORS: origin not allowed');
   },
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization'],
