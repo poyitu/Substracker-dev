@@ -15,6 +15,7 @@
  */
 
 import { Hono } from 'hono';
+import { cors } from 'hono/cors';
 
 import { handleApiRequest } from './api/router.js';
 import { handleAdminRequest, handleLoginPage } from './api/admin.js';
@@ -28,6 +29,29 @@ import { ensureMigrations } from './data/migrate.js';
 
 /** @type {Hono<{ Bindings: Bindings }>} */
 const app = new Hono();
+
+// ─────────────────────────────────────────────────────────────
+// CORS
+// 开发环境：仅允许本地 Expo/Web 地址
+// 生产环境：反射请求来源，允许任意合法前端访问
+// ─────────────────────────────────────────────────────────────
+app.use('*', cors({
+  origin: (origin, c) => {
+    const env = c.env;
+    if (env && env.ENVIRONMENT === 'production') {
+      return true;
+    }
+    const allowed = [
+      'http://localhost:8081',
+      'http://localhost:19000',
+      'http://localhost:19006',
+    ];
+    return allowed.includes(origin) ? origin : false;
+  },
+  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+}));
 
 // ─────────────────────────────────────────────────────────────
 // 全局中间件：迁移检查（首次访问透明触发）

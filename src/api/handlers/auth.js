@@ -51,7 +51,7 @@ async function handleLogin(request, env) {
     const token = await generateJWT(body.username, config.JWT_SECRET);
 
     return new Response(
-      JSON.stringify({ success: true }),
+      JSON.stringify({ success: true, token }),
       {
         headers: {
           'Content-Type': 'application/json',
@@ -84,7 +84,16 @@ function handleLogout() {
 }
 
 async function getUserFromRequest(request, env) {
-  const token = getCookieValue(request.headers.get('Cookie'), 'token');
+  // 优先从 Authorization: Bearer 头取 token（移动端、API 调用场景）
+  const authHeader = request.headers.get('Authorization');
+  let token = authHeader && authHeader.startsWith('Bearer ')
+    ? authHeader.slice(7).trim()
+    : null;
+
+  if (!token) {
+    token = getCookieValue(request.headers.get('Cookie'), 'token');
+  }
+
   const config = await getConfig(env);
   const user = token ? await verifyJWT(token, config.JWT_SECRET) : null;
   return { user, config };
