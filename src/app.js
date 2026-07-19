@@ -41,6 +41,10 @@ app.use('*', cors({
     if (env && env.ENVIRONMENT === 'production') {
       return origin;
     }
+    // dev 模式：放行同域（无 Origin）和 localhost 任意端口
+    if (!origin) {
+      return origin;
+    }
     const allowed = [
       'http://localhost:8081',
       'http://localhost:19000',
@@ -49,13 +53,17 @@ app.use('*', cors({
     if (allowed.includes(origin)) {
       return origin;
     }
+    try {
+      const u = new URL(origin);
+      if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') {
+        return origin;
+      }
+    } catch {}
     throw new Error('CORS: origin not allowed');
   },
-  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
 }));
-
 // ─────────────────────────────────────────────────────────────
 // 全局中间件：迁移检查（首次访问透明触发）
 // ─────────────────────────────────────────────────────────────

@@ -19,10 +19,17 @@ import { useState, useEffect } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiClient } from '../../src/api/client';
 import type { Subscription } from '../../src/types';
 
 const CATEGORIES = ['视频', '音乐', '云存储', '工具', '会员', '其他'];
+const MODE_KEY = 'substracker.lastSubscriptionMode';
+const MODE_OPTIONS: Array<{ value: 'cycle' | 'reset' | 'no_renew'; label: string }> = [
+  { value: 'cycle', label: '循环订阅' },
+  { value: 'reset', label: '到期重置' },
+  { value: 'no_renew', label: '一次性' },
+];
 
 export default function EditScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -33,8 +40,17 @@ export default function EditScreen() {
   const [amount, setAmount] = useState('');
   const [expiryDate, setExpiryDate] = useState(new Date());
   const [isActive, setIsActive] = useState(true);
+  const [subscriptionMode, setSubscriptionMode] = useState<'cycle' | 'reset' | 'no_renew'>('cycle');
   const [autoRenew, setAutoRenew] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
+
+  const handleModeChange = (mode: 'cycle' | 'reset' | 'no_renew') => {
+    setSubscriptionMode(mode);
+    AsyncStorage.setItem(MODE_KEY, mode).catch(() => {});
+    if (mode === 'no_renew') {
+      setAutoRenew(false);
+    }
+  };
 
   useEffect(() => {
     (async () => {
@@ -46,6 +62,11 @@ export default function EditScreen() {
         setExpiryDate(new Date(sub.expiryDate));
         setIsActive(sub.isActive);
         setAutoRenew(sub.autoRenew);
+        const mode = sub.subscriptionMode || 'cycle';
+        setSubscriptionMode(mode);
+        if (mode === 'no_renew') {
+          setAutoRenew(false);
+        }
       } catch (err: any) {
         Alert.alert('加载失败', err.message);
         router.back();
@@ -69,6 +90,7 @@ export default function EditScreen() {
         expiryDate: expiryDate.toISOString(),
         isActive,
         autoRenew,
+        subscriptionMode,
       });
       router.back();
     } catch (err: any) {
@@ -81,7 +103,7 @@ export default function EditScreen() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" />
+        <ActivityIndicator size="large" color="#4F46E5" />
       </View>
     );
   }
@@ -169,6 +191,27 @@ export default function EditScreen() {
           </View>
         </View>
 
+        {/* Subscription Mode */}
+        <View style={styles.field}>
+          <Text style={styles.label}>订阅模式</Text>
+          <View style={styles.chipRow}>
+            {MODE_OPTIONS.map((opt) => (
+              <TouchableOpacity
+                key={opt.value}
+                style={[styles.chip, subscriptionMode === opt.value && styles.chipActive]}
+                onPress={() => handleModeChange(opt.value)}
+              >
+                <Text style={[styles.chipText, subscriptionMode === opt.value && styles.chipTextActive]}>
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          {subscriptionMode === 'no_renew' && (
+            <Text style={styles.switchHint}>一次性订阅到期后不再提醒也不自动续订</Text>
+          )}
+        </View>
+
         {/* Switch: Active */}
         <View style={styles.switchRow}>
           <Text style={styles.label}>活跃</Text>
@@ -189,6 +232,7 @@ export default function EditScreen() {
           <Switch
             value={autoRenew}
             onValueChange={setAutoRenew}
+            disabled={subscriptionMode === 'no_renew'}
             trackColor={{ false: '#D1D5DB', true: '#818CF8' }}
             thumbColor={autoRenew ? '#4F46E5' : '#F9FAFB'}
           />

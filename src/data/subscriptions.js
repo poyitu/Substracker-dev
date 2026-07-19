@@ -152,11 +152,12 @@ async function createSubscription(subscription, env) {
     const normalizedStartDate = startDate ? startDate.toISOString() : null;
     const normalizedExpiryDate = expiryDate.toISOString();
 
+    const subscriptionMode = subscription.subscriptionMode || 'cycle';
     const initialPaymentDate = normalizedStartDate || now.utc.toISOString();
     const newSubscription = {
       id: Date.now().toString(),
       name: subscription.name,
-      subscriptionMode: subscription.subscriptionMode || 'cycle',
+      subscriptionMode,
       customType: subscription.customType || '',
       category: subscription.category ? subscription.category.trim() : '',
       startDate: normalizedStartDate,
@@ -190,7 +191,7 @@ async function createSubscription(subscription, env) {
             ]
           : [],
       isActive: subscription.isActive !== false,
-      autoRenew: subscription.autoRenew !== false,
+      autoRenew: subscriptionMode === 'no_renew' ? false : subscription.autoRenew !== false,
       useLunar: useLunar,
       emailFrom: subscription.emailFrom || '',
       emailFromName: subscription.emailFromName || '',
@@ -306,11 +307,11 @@ async function updateSubscription(id, subscription, env) {
         periodEnd: existing.expiryDate || initialDate
       });
     }
-
+    const subscriptionMode = subscription.subscriptionMode || existing.subscriptionMode || 'cycle';
     const merged = {
       ...existing,
       name: subscription.name,
-      subscriptionMode: subscription.subscriptionMode || existing.subscriptionMode || 'cycle',
+      subscriptionMode,
       customType: subscription.customType || existing.customType || '',
       category:
         subscription.category !== undefined
@@ -340,11 +341,13 @@ async function updateSubscription(id, subscription, env) {
       paymentHistory,
       isActive: subscription.isActive !== undefined ? subscription.isActive : existing.isActive,
       autoRenew:
-        subscription.autoRenew !== undefined
-          ? subscription.autoRenew
-          : existing.autoRenew !== undefined
-            ? existing.autoRenew
-            : true,
+        subscriptionMode === 'no_renew'
+          ? false
+          : subscription.autoRenew !== undefined
+            ? subscription.autoRenew
+            : existing.autoRenew !== undefined
+              ? existing.autoRenew
+              : true,
       useLunar: useLunar,
       emailFrom: subscription.emailFrom !== undefined ? subscription.emailFrom : existing.emailFrom || '',
       emailFromName: subscription.emailFromName !== undefined ? subscription.emailFromName : existing.emailFromName || '',

@@ -13,9 +13,8 @@
 - **id**: 唯一标识符（用户自定义，如 `s-netflix`）
 - **name**: 服务名称
 - **isActive**: 是否活跃（停用的订阅不参与提醒）
-- **autoRenew**: 是否自动续订（续订时自动推进到期日并写支付记录）
-- **subscriptionMode**: 续订模式 — `cycle`（周期接续）或 `reset`（以支付日重置）
-- **expiryDate**: 到期日期（ISO 8601）
+- **autoRenew**: 是否自动续订（续订时自动推进到期日并写支付记录）。`subscriptionMode=no_renew` 时强制为 false
+- **subscriptionMode**: 续订模式 — `cycle`（周期接续）、`reset`（以支付日重置）、`no_renew`（一次性订阅，到期后完全静默：不自动续订、不发 after_expiry 提醒）
 - **periodValue / periodUnit**: 计费周期（如 1 month）
 - **amount / currency**: 金额与币种
 - **reminderUnit / reminderValue**: 旧版提醒字段（v3 起被 ReminderRule 替代，仅作兼容保留）

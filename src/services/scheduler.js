@@ -98,17 +98,19 @@ export async function checkExpiringSubscriptions(env) {
       let daysDiff = getDaysBetween(now.utc, expiryDate, timezone);
       let hoursDiff = (expiryDate.getTime() - now.utc.getTime()) / MS_PER_HOUR;
 
-      // 自动续订：已过期 + autoRenew=true → 推进到期日并写支付记录
+      // 一次性订阅（no_renew）：到期后完全静默，不续订也不提醒
+      if (subscription.subscriptionMode === 'no_renew' && daysDiff < 0) {
+        continue;
+      }
+
       if (subscription.autoRenew && daysDiff < 0) {
         const renewed = autoRenew(subscription, now.utc, timezone, config);
         if (renewed) {
           updatedSubsToSave.push(renewed.next);
           autoRenewedCount++;
-          // 续订后重算 diff
           expiryDate = new Date(renewed.next.expiryDate);
           daysDiff = getDaysBetween(now.utc, expiryDate, timezone);
           hoursDiff = (expiryDate.getTime() - now.utc.getTime()) / MS_PER_HOUR;
-          // 用续订后的对象作后续判断
           subscription.expiryDate = renewed.next.expiryDate;
           subscription.startDate = renewed.next.startDate;
           subscription.lastPaymentDate = renewed.next.lastPaymentDate;

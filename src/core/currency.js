@@ -1,4 +1,4 @@
-import { MS_PER_DAY, getCurrentTimeInTimezone, getTimezoneDateParts } from './time.js';
+import { MS_PER_DAY, getCurrentTimeInTimezone, getTimezoneDateParts, createUtcCalendarDateInTimezone } from './time.js';
 
 const CATEGORY_SEPARATOR_REGEX = /[\/，,\s]+/;
 
@@ -152,16 +152,17 @@ function getRecentPayments(subscriptions, timezone) {
 
 function getUpcomingRenewals(subscriptions, timezone) {
   const now = getCurrentTimeInTimezone(timezone);
-  const sevenDaysLater = new Date(now.getTime() + 7 * MS_PER_DAY);
+  const todayMidnight = createUtcCalendarDateInTimezone(now, timezone);
+  const sevenDaysLater = new Date(todayMidnight.getTime() + 7 * MS_PER_DAY);
   return subscriptions
     .filter(sub => {
       if (!sub.isActive) return false;
-      const renewalDate = new Date(sub.expiryDate);
-      return renewalDate >= now && renewalDate <= sevenDaysLater;
+      const renewalMidnight = createUtcCalendarDateInTimezone(sub.expiryDate, timezone);
+      return renewalMidnight >= todayMidnight && renewalMidnight <= sevenDaysLater;
     })
     .map(sub => {
-      const renewalDate = new Date(sub.expiryDate);
-      const daysUntilRenewal = Math.ceil((renewalDate - now) / MS_PER_DAY);
+      const renewalMidnight = createUtcCalendarDateInTimezone(sub.expiryDate, timezone);
+      const daysUntilRenewal = Math.ceil((renewalMidnight - todayMidnight) / MS_PER_DAY);
       return {
         name: sub.name,
         amount: sub.amount || 0,

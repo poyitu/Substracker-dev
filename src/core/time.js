@@ -603,3 +603,15 @@ export function convertUTCToTimezone(utcTime, timezone = 'UTC') {
   void timezone;
   return utcTime instanceof Date ? new Date(utcTime.getTime()) : new Date(utcTime);
 }
+/**
+ * 根据指定时区的日期（年/月/日）创建 UTC 零下点的 Date 实例。
+ * 用于日历级别（忽略时分秒/时区偏移）的日期比较。
+ *
+ * @param {Date | string | number} date
+ * @param {string} [timezone='UTC']
+ * @returns {Date}
+ */
+export function createUtcCalendarDateInTimezone(date, timezone = 'UTC') {
+  const parts = getTimezoneDateParts(date, timezone);
+  return new Date(Date.UTC(parts.year, parts.month - 1, parts.day, 0, 0, 0));
+}

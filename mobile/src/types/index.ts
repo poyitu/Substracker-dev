@@ -9,7 +9,7 @@ export interface Subscription {
   name: string;
   isActive: boolean;
   autoRenew: boolean;
-  subscriptionMode?: 'cycle' | 'reset';
+  subscriptionMode?: 'cycle' | 'reset' | 'no_renew';
   expiryDate: string; // ISO 8601
   startDate?: string;
   periodValue?: number;
@@ -19,12 +19,13 @@ export interface Subscription {
   category?: string;
   customType?: string;
   notes?: string;
-  useLunar?: boolean;
   /** 旧版提醒字段（兼容保留） */
   reminderUnit?: 'day' | 'hour';
   reminderValue?: number;
   reminderDays?: number;
   reminderHours?: number;
+  /** 提醒规则（v3 结构化规则） */
+  reminderRules?: ReminderRule[];
   /** 支付记录 */
   paymentHistory?: PaymentRecord[];
   lastPaymentDate?: string;
@@ -61,6 +62,7 @@ export interface DashboardStats {
   totalYearlyCost: number;
   currencyStats: Record<string, number>;
   upcoming: Array<{ id: string; name: string; daysRemaining: number; expiryDate: string }>;
+  timezone?: string;
 }
 
 /** API 回应通用结构 */

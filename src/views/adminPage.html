@@ -445,6 +445,7 @@
               <option value="">全部模式</option>
               <option value="cycle">循环订阅</option>
               <option value="reset">到期重置</option>
+              <option value="no_renew">一次性订阅</option>
             </select>
           </div>
           <div class="sm:w-44 lg:w-40">
@@ -569,10 +570,11 @@
                 <label for="subscriptionMode" class="block text-sm font-medium text-gray-700">订阅模式</label>
              </div>
             <select id="subscriptionMode" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 bg-white h-10">
-              <option value="cycle" selected>📅 循环订阅</option>
+              <option value="cycle">📅 循环订阅</option>
               <option value="reset">⏳ 到期重置</option>
+              <option value="no_renew">🚫 一次性订阅</option>
             </select>
-            
+            <p class="mt-1 text-xs text-gray-500">一次性订阅到期后不再提醒也不自动续订</p>
             <div class="mt-2 flex items-center space-x-3">
                  <label class="inline-flex items-center cursor-pointer select-none">
                   <input type="checkbox" id="showLunar" class="form-checkbox h-4 w-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500">
@@ -1668,18 +1670,17 @@ const lunarBiz = {
         const nameHtml = createHoverText(subscription.name, 20, 'text-sm font-medium text-gray-900');
         const typeHtml = createHoverText(subscription.customType || '其他', 15, 'text-sm text-gray-900');
         const periodHtml = periodText ? createHoverText('周期: ' + periodText, 20, 'text-xs text-gray-500 mt-1') : '';
-        const modeLabel = (subscription.subscriptionMode === 'reset') ? '到期重置' : '循环订阅';
-        const modeIconClass = (subscription.subscriptionMode === 'reset') ? 'fa-hourglass-end' : 'fa-sync';
-        const modeColorClass = (subscription.subscriptionMode === 'reset') ? 'text-orange-500' : 'text-blue-500';
+        const modeRaw = subscription.subscriptionMode || 'cycle';
+        const modeLabel = modeRaw === 'reset' ? '到期重置' : modeRaw === 'no_renew' ? '一次性' : '循环订阅';
+        const modeIconClass = modeRaw === 'reset' ? 'fa-hourglass-end' : modeRaw === 'no_renew' ? 'fa-ban' : 'fa-sync';
+        const modeColorClass = modeRaw === 'reset' ? 'text-orange-500' : modeRaw === 'no_renew' ? 'text-gray-500' : 'text-blue-500';
         const modeHtml = '<div class="text-xs ' + modeColorClass + ' mt-1"><i class="fas ' + modeIconClass + ' mr-1"></i>' + modeLabel + '</div>';
-
         const categoryTokens = normalizeCategoryTokens(subscription.category);
         const categoryHtml = categoryTokens.length
           ? '<div class="flex flex-wrap gap-2 mt-2">' + categoryTokens.map(cat =>
               '<span class="px-2 py-0.5 bg-indigo-50 text-indigo-600 text-xs rounded-full"><i class="fas fa-tag mr-1"></i>' + cat + '</span>'
             ).join('') + '</div>'
           : '';
-
         // 复用外部的 format 对象
         const expiryDateText = formatDateInTimezone(subscription.expiryDate, globalTimezone);
         const lunarHtml = lunarExpiryText ? createHoverText('农历: ' + lunarExpiryText, 25, 'text-xs text-blue-600 mt-1') : '';
@@ -2517,11 +2518,15 @@ const lunarBiz = {
       document.getElementById('startDate').value = today;
       document.getElementById('category').value = '';
       document.getElementById('reminderValue').value = '7';
-      document.getElementById('reminderUnit').value = 'day';
       document.getElementById('isActive').checked = true;
       document.getElementById('autoRenew').checked = true;
-
-      loadLunarPreference();
+      document.getElementById('autoRenew').disabled = false;
+      const savedMode = localStorage.getItem('substracker.lastSubscriptionMode') || 'cycle';
+      document.getElementById('subscriptionMode').value = savedMode;
+      if (savedMode === 'no_renew') {
+        document.getElementById('autoRenew').checked = false;
+        document.getElementById('autoRenew').disabled = true;
+      }
       calculateExpiryDate();
       setupModalEventListeners();
     });
@@ -3129,14 +3134,20 @@ const lunarBiz = {
         });
       }
 
-      ['startDate', 'periodValue', 'periodUnit'].forEach(id => {
-        const element = document.getElementById(id);
-        if (element && !element.dataset.bound) {
-          element.dataset.bound = 'true';
-          element.addEventListener('change', calculateExpiryDate);
-        }
-      });
-      // 初始化日期选择器
+      // 订阅模式联动：选 no_renew 时禁用自动续订，记住上次选择
+      const subscriptionModeEl = document.getElementById('subscriptionMode');
+      const autoRenewEl = document.getElementById('autoRenew');
+      if (subscriptionModeEl) {
+        subscriptionModeEl.addEventListener('change', () => {
+          localStorage.setItem('substracker.lastSubscriptionMode', subscriptionModeEl.value);
+          if (subscriptionModeEl.value === 'no_renew' && autoRenewEl) {
+            autoRenewEl.checked = false;
+            autoRenewEl.disabled = true;
+          } else if (autoRenewEl) {
+            autoRenewEl.disabled = false;
+          }
+        });
+      }
       try {
         if (window.startDatePicker && typeof window.startDatePicker.destroy === 'function') window.startDatePicker.destroy();
         if (window.expiryDatePicker && typeof window.expiryDatePicker.destroy === 'function') window.expiryDatePicker.destroy();
@@ -3329,10 +3340,6 @@ const lunarBiz = {
         const response = await apiFetch('/api/subscriptions/' + id);
         const subscription = await response.json();
         
-        if (subscription) {
-          document.getElementById('modalTitle').textContent = '编辑订阅';
-          document.getElementById('subscriptionId').value = subscription.id;
-          document.getElementById('name').value = subscription.name;
           document.getElementById('subscriptionMode').value = subscription.subscriptionMode || 'cycle'; // 默认为 cycle
           document.getElementById('customType').value = subscription.customType || '';
           document.getElementById('category').value = subscription.category || '';
@@ -3341,7 +3348,10 @@ const lunarBiz = {
           document.getElementById('currency').value = subscription.currency || 'CNY'; // 默认设置为 CNY
           document.getElementById('isActive').checked = subscription.isActive !== false;
           document.getElementById('autoRenew').checked = subscription.autoRenew !== false;
-          document.getElementById('startDate').value = subscription.startDate ? formatDateInputInTimezone(subscription.startDate, globalTimezone) : '';
+          if ((subscription.subscriptionMode || 'cycle') === 'no_renew') {
+            document.getElementById('autoRenew').checked = false;
+            document.getElementById('autoRenew').disabled = true;
+          }
           document.getElementById('expiryDate').value = subscription.expiryDate ? formatDateInputInTimezone(subscription.expiryDate, globalTimezone) : '';
           document.getElementById('periodValue').value = subscription.periodValue || 1;
           document.getElementById('periodUnit').value = subscription.periodUnit || 'month';
@@ -3393,7 +3403,6 @@ const lunarBiz = {
                 isEditingLoading = false;
             }, 200);
           }, 100);
-        }
       } catch (error) {
         console.error('获取订阅信息失败:', error);
         showToast('获取订阅信息失败', 'error');

@@ -188,8 +188,9 @@ async function getOrCreateCalendar(): Promise<string> {
   const savedId = await AsyncStorage.getItem(CALENDAR_ID_KEY);
   if (savedId) {
     try {
-      const cal = await Calendar.getCalendarAsync(savedId);
-      if (cal) return savedId;
+      const cals = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
+      const exists = cals.some((cal) => cal.id === savedId);
+      if (exists) return savedId;
     } catch {}
   }
 

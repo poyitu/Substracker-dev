@@ -13,7 +13,7 @@ import {
   RefreshControl,
   Alert,
 } from 'react-native';
-import { useEffect, useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { apiClient } from '../../src/api/client';
@@ -40,8 +40,8 @@ export default function SubscriptionsScreen() {
   const loadSubscriptions = useCallback(async () => {
     if (!isLoggedIn) return;
     try {
-      const data = await apiClient.getSubscriptions();
-      setSubscriptions(data);
+      const subs = await apiClient.getSubscriptions();
+      setSubscriptions(subs);
     } catch (err) {
       console.warn('[Subscriptions] 加载失败:', err);
     }
@@ -61,11 +61,15 @@ export default function SubscriptionsScreen() {
   }, [loadSubscriptions]);
 
   const filtered = subscriptions.filter((sub) => {
-    const matchCategory =
-      selectedCategory === '全部' || sub.category === selectedCategory;
-    const matchSearch =
-      !search || sub.name.toLowerCase().includes(search.toLowerCase());
-    return matchCategory && matchSearch;
+    if (selectedCategory !== '全部' && sub.category !== selectedCategory) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      return (
+        sub.name.toLowerCase().includes(q) ||
+        (sub.category || '').toLowerCase().includes(q)
+      );
+    }
+    return true;
   });
 
   const handleDelete = (sub: Subscription) => {
@@ -75,8 +79,12 @@ export default function SubscriptionsScreen() {
         text: '删除',
         style: 'destructive',
         onPress: async () => {
-          await apiClient.deleteSubscription(sub.id);
-          loadSubscriptions();
+          try {
+            await apiClient.deleteSubscription(sub.id);
+            loadSubscriptions();
+          } catch (err: any) {
+            Alert.alert('删除失败', err.message);
+          }
         },
       },
     ]);
@@ -108,14 +116,10 @@ export default function SubscriptionsScreen() {
       </View>
 
       {/* Category Filter */}
-      <FlatList
-        horizontal
-        data={PRESET_CATEGORIES}
-        keyExtractor={(item) => item}
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.categoryList}
-        renderItem={({ item }) => (
+      <View style={styles.categoryRow}>
+        {PRESET_CATEGORIES.map((item) => (
           <TouchableOpacity
+            key={item}
             style={[
               styles.categoryChip,
               selectedCategory === item && styles.categoryChipActive,
@@ -131,8 +135,8 @@ export default function SubscriptionsScreen() {
               {item}
             </Text>
           </TouchableOpacity>
-        )}
-      />
+        ))}
+      </View>
 
       {/* Subscription List */}
       <FlatList
@@ -142,20 +146,16 @@ export default function SubscriptionsScreen() {
           <TouchableOpacity
             style={styles.subItem}
             onPress={() => router.push(`/edit/${item.id}`)}
-            onLongPress={() => handleDelete(item)}
           >
             <View style={styles.subLeft}>
               <View
-                style={[
-                  styles.dot,
-                  item.isActive ? styles.dotActive : styles.dotInactive,
-                ]}
+                style={[styles.dot, item.isActive ? styles.dotActive : styles.dotInactive]}
               />
-              <View>
+              <View style={{ flex: 1 }}>
                 <Text style={styles.subName}>{item.name}</Text>
                 <Text style={styles.subMeta}>
-                  {item.category || '未分类'}
-                  {item.amount ? ` · ¥${item.amount}` : ''}
+                  {item.category || '未分类'} · {item.periodValue || 1}
+                  {item.periodUnit === 'month' ? '月' : item.periodUnit === 'year' ? '年' : '天'}
                 </Text>
               </View>
             </View>
@@ -163,26 +163,20 @@ export default function SubscriptionsScreen() {
               <Text style={styles.subExpiry}>
                 {new Date(item.expiryDate).toLocaleDateString('zh-CN')}
               </Text>
-              <Ionicons name="chevron-forward" size={16} color="#D1D5DB" />
+              <TouchableOpacity onPress={() => handleDelete(item)}>
+                <Ionicons name="trash-outline" size={18} color="#EF4444" />
+              </TouchableOpacity>
             </View>
           </TouchableOpacity>
         )}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         contentContainerStyle={styles.listContent}
-        ListEmptyComponent={
-          <Text style={styles.emptyText}>暂无订阅，点击右下角添加</Text>
-        }
+        ListEmptyComponent={<Text style={styles.emptyText}>暂无订阅</Text>}
       />
 
       {/* FAB */}
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => router.push('/add')}
-        activeOpacity={0.8}
-      >
-        <Ionicons name="add" size={28} color="#FFFFFF" />
+      <TouchableOpacity style={styles.fab} onPress={() => router.push('/add')}>
+        <Ionicons name="add" size={24} color="#FFFFFF" />
       </TouchableOpacity>
     </View>
   );
@@ -218,7 +212,9 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#111827',
   },
-  categoryList: {
+  categoryRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     paddingHorizontal: 16,
     paddingVertical: 10,
     gap: 8,

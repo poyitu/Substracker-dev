@@ -1,6 +1,6 @@
 // ============================================================
 // 首页仪表盘
-// V1: 今日到期 / 本月到期 / 总订阅 / 月花费
+// V1: 即将到期 / 本月到期 / 总订阅 / 月花费
 // ============================================================
 
 import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
@@ -8,18 +8,37 @@ import { useEffect, useState, useCallback } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { apiClient } from '../../src/api/client';
 import { useAuth } from '../../src/stores/auth';
-import type { DashboardStats } from '../../src/types';
+import { isUpcomingSubscription, getDaysBetween } from '../../src/lib/time';
+import type { DashboardStats, Subscription } from '../../src/types';
 
 export default function HomeScreen() {
   const { isLoggedIn } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-
   const loadStats = useCallback(async () => {
     if (!isLoggedIn) return;
     try {
-      const data = await apiClient.getDashboardStats();
-      setStats(data);
+      const [dashboard, subs] = await Promise.all([
+        apiClient.getDashboardStats(),
+        apiClient.getSubscriptions(),
+      ]);
+      const timezone = dashboard.timezone || 'UTC';
+      const upcoming = subs
+        .filter((sub) => isUpcomingSubscription(sub, timezone))
+        .map((sub) => {
+          const daysRemaining = Math.max(0, getDaysBetween(new Date(), sub.expiryDate, timezone));
+          return {
+            id: sub.id,
+            name: sub.name,
+            daysRemaining,
+            expiryDate: sub.expiryDate,
+          };
+        })
+        .sort((a, b) => a.daysRemaining - b.daysRemaining);
+      setStats({
+        ...dashboard,
+        upcoming,
+      });
     } catch (err) {
       console.warn('[Home] 加载仪表盘失败:', err);
     }
@@ -28,21 +47,19 @@ export default function HomeScreen() {
   useEffect(() => {
     loadStats();
   }, [loadStats]);
-
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadStats();
     setRefreshing(false);
   }, [loadStats]);
 
-  const todayCount = stats?.upcoming?.filter((s) => s.daysRemaining === 0).length ?? 0;
+  const upcomingCount = stats?.upcoming?.length ?? 0;
 
   return (
     <View style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>SubsTracker</Text>
-        <Text style={styles.headerSubtitle}>订阅管理</Text>
+        <Text style={styles.headerSubtitle}>订阅管理，尽在掌握</Text>
       </View>
 
       <ScrollView
@@ -54,8 +71,8 @@ export default function HomeScreen() {
         <View style={styles.statsGrid}>
           <View style={[styles.statCard, styles.cardDanger]}>
             <Ionicons name="alert-circle" size={24} color="#EF4444" />
-            <Text style={styles.statNumber}>{todayCount}</Text>
-            <Text style={styles.statLabel}>今日到期</Text>
+            <Text style={styles.statNumber}>{upcomingCount}</Text>
+            <Text style={styles.statLabel}>即将到期</Text>
           </View>
           <View style={[styles.statCard, styles.cardWarning]}>
             <Ionicons name="calendar" size={24} color="#F59E0B" />
@@ -70,7 +87,9 @@ export default function HomeScreen() {
           <View style={[styles.statCard, styles.cardSuccess]}>
             <Ionicons name="wallet" size={24} color="#10B981" />
             <Text style={styles.statNumber}>
-              {stats?.totalMonthlyCost != null ? `¥${stats.totalMonthlyCost.toFixed(0)}` : '--'}
+              {stats?.totalMonthlyCost != null
+                ? `¥${Number(stats.totalMonthlyCost).toFixed(0)}`
+                : '--'}
             </Text>
             <Text style={styles.statLabel}>月花费</Text>
           </View>

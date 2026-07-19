@@ -94,9 +94,25 @@ class ApiClient {
     });
   }
 
-  // ---- Dashboard ----
   getDashboardStats() {
-    return this.request<DashboardStats>('/api/dashboard/stats');
+    return this.request<{ success: boolean; data: any }>('/api/dashboard/stats').then((res) => {
+      if (!res.success || !res.data) throw new Error('获取统计数据失败');
+      const d = res.data;
+      return {
+        total: d.activeSubscriptions?.total ?? 0,
+        expiringThisMonth: d.activeSubscriptions?.expiringSoon ?? 0,
+        totalMonthlyCost: d.monthlyExpense?.amount ?? 0,
+        totalYearlyCost: d.yearlyExpense?.amount ?? 0,
+        currencyStats: d.expenseByCategory ?? {},
+        upcoming: (d.upcomingRenewals ?? []).map((r: any) => ({
+          id: r.id ?? `${r.name}-${r.renewalDate}`,
+          name: r.name,
+          daysRemaining: r.daysUntilRenewal ?? r.daysRemaining,
+          expiryDate: r.renewalDate ?? r.expiryDate,
+        })),
+        timezone: d.timezone,
+      } as DashboardStats;
+    });
   }
 
   // ---- Reminder Rules ----

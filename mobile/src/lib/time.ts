@@ -142,3 +142,65 @@ export function formatTimeInTimezone(
     return d.toISOString();
   }
 }
+
+
+/**
+ * 判断订阅是否处于"即将到期"状态，逻辑对齐 Web 管理后台：
+ * - 优先取首个启用的 reminder rule
+ * - on_expiry / on_expiry_at 视为到期当天
+ * - before_expiry / after_expiry 用 unit=day/hour + value 作为窗口
+ * - 无 rule 时回退到旧字段 reminderUnit/reminderValue/reminderDays/reminderHours
+ */
+export function isUpcomingSubscription(
+  sub: {
+    expiryDate: string;
+    isActive: boolean;
+    reminderRules?: Array<{
+      type: string;
+      unit?: string;
+      value?: number;
+      hours?: number[];
+      isEnabled?: boolean;
+    }>;
+    reminderUnit?: string;
+    reminderValue?: number;
+    reminderDays?: number;
+    reminderHours?: number;
+  },
+  timezone = 'UTC'
+): boolean {
+  if (!sub.isActive) return false;
+
+  const now = new Date();
+  const expiryDate = new Date(sub.expiryDate);
+
+  const rules = (sub.reminderRules || []).filter((r) => r.isEnabled !== false);
+
+  let unit: string;
+  let value: number;
+
+  if (rules.length > 0) {
+    const r = rules[0];
+    if (r.type === 'on_expiry' || r.type === 'on_expiry_at') {
+      unit = 'day';
+      value = 0;
+    } else {
+      unit = r.unit === 'hour' ? 'hour' : 'day';
+      value = Number(r.value);
+    }
+  } else {
+    unit = sub.reminderUnit || 'day';
+    value = Number(sub.reminderValue ?? sub.reminderDays ?? 7);
+    if (unit === 'hour' && (isNaN(value) || value === 0)) {
+      value = Number(sub.reminderHours ?? 0);
+    }
+  }
+
+  if (unit === 'hour') {
+    const diffHours = (expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60);
+    return diffHours >= 0 && diffHours <= value;
+  }
+
+  const daysDiff = getDaysBetween(now, expiryDate, timezone);
+  return daysDiff >= 0 && daysDiff <= value;
+}

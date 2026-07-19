@@ -18,7 +18,7 @@ import {
   getExpenseByType,
   getExpenseByCategory
 } from '../../core/currency.js';
-import { getCurrentTimeInTimezone, MS_PER_DAY } from '../../core/time.js';
+import { getCurrentTimeInTimezone, MS_PER_DAY, createUtcCalendarDateInTimezone } from '../../core/time.js';
 import * as schedulerLogsRepo from '../../data/scheduler-logs.repo.js';
 
 async function handleDashboardStats(env, config) {
@@ -66,12 +66,12 @@ async function handleDashboardStats(env, config) {
 
     const activeSubscriptions = subscriptions.filter((s) => s.isActive);
     const now = getCurrentTimeInTimezone(timezone);
-    const sevenDaysLater = new Date(now.getTime() + 7 * MS_PER_DAY);
+    const todayMidnight = createUtcCalendarDateInTimezone(now, timezone);
+    const sevenDaysLater = new Date(todayMidnight.getTime() + 7 * MS_PER_DAY);
     const expiringSoon = activeSubscriptions.filter((s) => {
-      const expiryDate = new Date(s.expiryDate);
-      return expiryDate >= now && expiryDate <= sevenDaysLater;
+      const expiryMidnight = createUtcCalendarDateInTimezone(s.expiryDate, timezone);
+      return expiryMidnight >= todayMidnight && expiryMidnight <= sevenDaysLater;
     }).length;
-
     return new Response(
       JSON.stringify({
         success: true,
