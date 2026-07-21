@@ -4,12 +4,14 @@
 // ============================================================
 
 import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
-import { useEffect, useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { apiClient } from '../../src/api/client';
 import { useAuth } from '../../src/stores/auth';
 import { isUpcomingSubscription, getDaysBetween } from '../../src/lib/time';
-import type { DashboardStats, Subscription } from '../../src/types';
+import { readCache, writeCache } from '../../src/lib/cache';
+import type { DashboardStats } from '../../src/types';
 
 export default function HomeScreen() {
   const { isLoggedIn } = useAuth();
@@ -39,14 +41,26 @@ export default function HomeScreen() {
         ...dashboard,
         upcoming,
       });
+      writeCache('dashboard', { ...dashboard, upcoming });
     } catch (err) {
       console.warn('[Home] 加载仪表盘失败:', err);
     }
   }, [isLoggedIn]);
 
-  useEffect(() => {
-    loadStats();
-  }, [loadStats]);
+  // 每次获得焦点时刷新（含首次挂载）
+  useFocusEffect(
+    useCallback(() => {
+      if (!isLoggedIn) return;
+      let cancelled = false;
+      readCache<DashboardStats>('dashboard').then((cached) => {
+        if (!cancelled && cached) setStats(cached);
+      });
+      loadStats();
+      return () => {
+        cancelled = true;
+      };
+    }, [loadStats]),
+  );
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadStats();

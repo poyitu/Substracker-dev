@@ -7,9 +7,21 @@ import { useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../src/stores/auth';
 
+function getDefaultWorkerUrl(): string {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const Constants = require('expo-constants').default ?? require('expo-constants');
+    // expoConfig (SDK 47+) / manifest (旧版) / extra 走 env 兜底
+    const extras = Constants?.expoConfig?.extra ?? Constants?.manifest?.extra ?? {};
+    return extras?.defaultWorkerUrl ?? 'https://substracker.poyitu8.dpdns.org';
+  } catch {
+    return 'https://substracker.poyitu8.dpdns.org';
+  }
+}
+
 export default function LoginScreen() {
   const { login } = useAuth();
-  const [workerUrl, setWorkerUrl] = useState('http://localhost:8787');
+  const [workerUrl, setWorkerUrl] = useState(getDefaultWorkerUrl());
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);

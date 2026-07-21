@@ -14,6 +14,8 @@ import {
   Alert,
   ActivityIndicator,
   Platform,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { useState, useEffect } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -21,7 +23,7 @@ import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiClient } from '../../src/api/client';
-import type { Subscription } from '../../src/types';
+import type { Subscription, ReminderRule } from '../../src/types';
 
 const CATEGORIES = ['视频', '音乐', '云存储', '工具', '会员', '其他'];
 const MODE_KEY = 'substracker.lastSubscriptionMode';
@@ -43,6 +45,10 @@ export default function EditScreen() {
   const [subscriptionMode, setSubscriptionMode] = useState<'cycle' | 'reset' | 'no_renew'>('cycle');
   const [autoRenew, setAutoRenew] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [reminderRules, setReminderRules] = useState<ReminderRule[]>([]);
+  const [showRulePicker, setShowRulePicker] = useState(false);
+  const [showDaysPicker, setShowDaysPicker] = useState<string | null>(null);
+  const [daysPickerValue, setDaysPickerValue] = useState('');
 
   const handleModeChange = (mode: 'cycle' | 'reset' | 'no_renew') => {
     setSubscriptionMode(mode);
@@ -50,6 +56,79 @@ export default function EditScreen() {
     if (mode === 'no_renew') {
       setAutoRenew(false);
     }
+  };
+
+  // ---- 提醒规则操作 ----
+  const toggleRule = (ruleId: string) => {
+    setReminderRules((prev) =>
+      prev.map((r) => (r.id === ruleId ? { ...r, isEnabled: !r.isEnabled } : r)),
+    );
+  };
+
+  const updateRuleDays = (ruleId: string, text: string) => {
+    const n = parseInt(text, 10);
+    if (text !== '' && !isNaN(n)) {
+      setReminderRules((prev) =>
+        prev.map((r) => (r.id === ruleId ? { ...r, value: Math.max(0, n) } : r)),
+      );
+    }
+  };
+
+  const openDaysPicker = (ruleId: string, currentValue: number) => {
+    setDaysPickerValue(String(currentValue));
+    setShowDaysPicker(ruleId);
+  };
+
+  const confirmDaysPicker = () => {
+    if (showDaysPicker) {
+      const n = parseInt(daysPickerValue, 10);
+      if (!isNaN(n) && n >= 0) {
+        setReminderRules((prev) =>
+          prev.map((r) => (r.id === showDaysPicker ? { ...r, value: n } : r)),
+        );
+      }
+      setShowDaysPicker(null);
+      setDaysPickerValue('');
+    }
+  };
+
+  const ruleLabel = (rule: ReminderRule) => {
+    if (rule.type === 'on_expiry') return '到期当天';
+    if (rule.type === 'on_expiry_at') return `到期当天 ${(rule.hours || []).join(', ')}点`;
+    if (rule.type === 'before_expiry') return `提前 ${rule.value} 天`;
+    if (rule.type === 'after_expiry') return `到期后 ${rule.value} 天`;
+    return `${rule.type} ${rule.value}${rule.unit === 'hours' ? '小时' : '天'}`;
+  };
+
+  const makeLocalRuleId = () => `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  const updateRuleHours = (ruleId: string, text: string) => {
+    const hours = text
+      .split(/[,，\s]+/)
+      .map((h) => parseInt(h, 10))
+      .filter((h) => !isNaN(h) && h >= 0 && h <= 23);
+    setReminderRules((prev) =>
+      prev.map((r) => (r.id === ruleId ? { ...r, hours } : r)),
+    );
+  };
+
+  const addRule = (type: ReminderRule['type']) => {
+    const rule: ReminderRule = {
+      id: makeLocalRuleId(),
+      type,
+      value: type === 'on_expiry' || type === 'on_expiry_at' ? 0 : 7,
+      unit: 'days',
+      isEnabled: true,
+      repeatInterval: null,
+      repeatUntil: 'renewed',
+      ...(type === 'on_expiry_at' ? { hours: [9, 18] } : {}),
+    };
+    setReminderRules((prev) => [...prev, rule]);
+    setShowRulePicker(false);
+  };
+
+  const deleteRule = (ruleId: string) => {
+    setReminderRules((prev) => prev.filter((r) => r.id !== ruleId));
   };
 
   useEffect(() => {
@@ -66,6 +145,13 @@ export default function EditScreen() {
         setSubscriptionMode(mode);
         if (mode === 'no_renew') {
           setAutoRenew(false);
+        }
+        // 加载提醒规则
+        try {
+          const rules = await apiClient.getReminderRules(id);
+          if (Array.isArray(rules)) setReminderRules(rules);
+        } catch {
+          // 暂无规则或加载失败，保持空数组
         }
       } catch (err: any) {
         Alert.alert('加载失败', err.message);
@@ -92,6 +178,12 @@ export default function EditScreen() {
         autoRenew,
         subscriptionMode,
       });
+      // 保存提醒规则
+      try {
+        await apiClient.updateReminderRules(id, reminderRules);
+      } catch (ruleErr: any) {
+        console.warn('[Edit] 提醒规则保存失败:', ruleErr);
+      }
       router.back();
     } catch (err: any) {
       Alert.alert('保存失败', err.message || '请重试');
@@ -237,7 +329,166 @@ export default function EditScreen() {
             thumbColor={autoRenew ? '#4F46E5' : '#F9FAFB'}
           />
         </View>
+
+        {/* 提醒规则 */}
+        <View style={styles.field}>
+          <View style={styles.reminderHeader}>
+            <Text style={styles.label}>提醒规则</Text>
+            <TouchableOpacity onPress={() => setShowRulePicker(true)}>
+              <Ionicons name="add-circle" size={22} color="#4F46E5" />
+            </TouchableOpacity>
+          </View>
+          {reminderRules.length > 0 ? (
+            reminderRules.map((rule) => (
+              <View key={rule.id} style={styles.reminderRow}>
+                <View style={styles.reminderLeft}>
+                  {rule.type === 'before_expiry' ? (
+                    <View style={styles.reminderDaysRow}>
+                      <Text style={styles.reminderPrefix}>提前</Text>
+                      <TouchableOpacity
+                        style={styles.reminderDaysBtn}
+                        onPress={() => {
+                          if (!rule.isEnabled) return;
+                          openDaysPicker(rule.id, rule.value);
+                        }}
+                        disabled={!rule.isEnabled}
+                      >
+                        <Text style={styles.reminderDaysBtnText}>{rule.value}</Text>
+                        <Ionicons name="chevron-down" size={12} color="#9CA3AF" />
+                      </TouchableOpacity>
+                      <Text style={styles.reminderSuffix}>天</Text>
+                    </View>
+                  ) : rule.type === 'on_expiry_at' ? (
+                    <View style={styles.reminderDaysRow}>
+                      <Text style={styles.reminderPrefix}>到期当天</Text>
+                      <TextInput
+                        style={[styles.reminderDaysInput, styles.hoursInput]}
+                        value={(rule.hours || []).join(', ')}
+                        onChangeText={(t) => updateRuleHours(rule.id, t)}
+                        placeholder="如 9, 18"
+                        placeholderTextColor="#9CA3AF"
+                        editable={rule.isEnabled}
+                        keyboardType="number-pad"
+                      />
+                      <Text style={styles.reminderSuffix}>点</Text>
+                    </View>
+                  ) : (
+                    <Text
+                      style={[
+                        styles.reminderLabel,
+                        !rule.isEnabled && styles.reminderLabelDisabled,
+                      ]}
+                    >
+                      {ruleLabel(rule)}
+                    </Text>
+                  )}
+                </View>
+                <View style={styles.reminderActions}>
+                  <Switch
+                    value={rule.isEnabled}
+                    onValueChange={() => toggleRule(rule.id)}
+                    trackColor={{ false: '#D1D5DB', true: '#818CF8' }}
+                    thumbColor={rule.isEnabled ? '#4F46E5' : '#F9FAFB'}
+                  />
+                  <TouchableOpacity onPress={() => deleteRule(rule.id)} style={styles.reminderDeleteBtn}>
+                    <Ionicons name="trash-outline" size={16} color="#EF4444" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))
+          ) : (
+            <Text style={styles.emptyHint}>暂无提醒（点击右上 + 添加）</Text>
+          )}
+        </View>
       </ScrollView>
+
+      {/* 提醒类型选择弹窗 */}
+      <Modal visible={showRulePicker} transparent animationType="fade">
+        <Pressable
+          style={styles.rulePickerOverlay}
+          onPress={() => setShowRulePicker(false)}
+        >
+          <View style={styles.rulePickerContent}>
+            <Text style={styles.rulePickerTitle}>添加提醒</Text>
+            {([
+              { type: 'before_expiry' as const, label: '提前N天', icon: 'time-outline' as const },
+              { type: 'on_expiry' as const, label: '到期当天', icon: 'calendar-outline' as const },
+              { type: 'on_expiry_at' as const, label: '到期当天指定时间', icon: 'alarm-outline' as const },
+            ]).map((opt) => (
+              <Pressable
+                key={opt.type}
+                style={styles.rulePickerOption}
+                onPress={() => addRule(opt.type)}
+              >
+                <Ionicons name={opt.icon} size={18} color="#4F46E5" />
+                <Text style={styles.rulePickerOptionText}>{opt.label}</Text>
+              </Pressable>
+            ))}
+            <Pressable
+              style={styles.rulePickerCancel}
+              onPress={() => setShowRulePicker(false)}
+            >
+              <Text style={styles.rulePickerCancelText}>取消</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* 天数选择弹窗 */}
+      <Modal visible={showDaysPicker !== null} transparent animationType="fade">
+        <Pressable
+          style={styles.rulePickerOverlay}
+          onPress={() => setShowDaysPicker(null)}
+        >
+          <View style={styles.rulePickerContent}>
+            <Text style={styles.rulePickerTitle}>选择天数</Text>
+            <View style={styles.daysChipRow}>
+              {[1, 2, 3, 4, 5, 6, 7].map((d) => (
+                <TouchableOpacity
+                  key={d}
+                  style={[
+                    styles.daysChip,
+                    daysPickerValue === String(d) && styles.daysChipActive,
+                  ]}
+                  onPress={() => setDaysPickerValue(String(d))}
+                >
+                  <Text
+                    style={[
+                      styles.daysChipText,
+                      daysPickerValue === String(d) && styles.daysChipTextActive,
+                    ]}
+                  >
+                    {d}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={styles.customDaysRow}>
+              <Text style={styles.customDaysLabel}>自定义:</Text>
+              <TextInput
+                style={styles.customDaysInput}
+                value={daysPickerValue}
+                onChangeText={setDaysPickerValue}
+                keyboardType="number-pad"
+                placeholder="天数"
+                placeholderTextColor="#9CA3AF"
+              />
+              <Text style={styles.customDaysSuffix}>天</Text>
+            </View>
+            <View style={styles.daysPickerActions}>
+              <Pressable
+                style={styles.daysPickerCancel}
+                onPress={() => setShowDaysPicker(null)}
+              >
+                <Text style={styles.daysPickerCancelText}>取消</Text>
+              </Pressable>
+              <Pressable style={styles.daysPickerConfirm} onPress={confirmDaysPicker}>
+                <Text style={styles.daysPickerConfirmText}>确定</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -295,4 +546,157 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   switchHint: { fontSize: 12, color: '#9CA3AF', marginTop: 2 },
+  reminderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  reminderLeft: { flex: 1 },
+  reminderDaysRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  reminderPrefix: { fontSize: 14, color: '#374151' },
+  reminderSuffix: { fontSize: 14, color: '#374151' },
+  reminderDaysInput: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    fontSize: 14,
+    color: '#111827',
+    width: 48,
+    textAlign: 'center',
+  },
+  reminderLabel: { fontSize: 14, color: '#374151' },
+  reminderLabelDisabled: { color: '#D1D5DB' },
+  reminderActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  reminderDeleteBtn: { padding: 4 },
+  reminderHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  hoursInput: { width: 96 },
+  emptyHint: { fontSize: 13, color: '#9CA3AF', marginTop: 4 },
+  // -- 提醒类型选择弹窗 --
+  rulePickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  rulePickerContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 20,
+    paddingBottom: 36,
+    gap: 4,
+  },
+  rulePickerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  rulePickerOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+    backgroundColor: '#F9FAFB',
+  },
+  rulePickerOptionText: { fontSize: 15, color: '#374151', fontWeight: '500' },
+  rulePickerCancel: {
+    marginTop: 12,
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+  },
+  rulePickerCancelText: { fontSize: 15, fontWeight: '600', color: '#374151' },
+  // -- 天数选择 --
+  reminderDaysBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    minWidth: 48,
+    justifyContent: 'center',
+  },
+  reminderDaysBtnText: { fontSize: 14, color: '#111827', fontWeight: '600' },
+  daysChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    justifyContent: 'center',
+    marginVertical: 8,
+  },
+  daysChip: {
+    width: 44,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  daysChipActive: { backgroundColor: '#4F46E5' },
+  daysChipText: { fontSize: 15, color: '#374151', fontWeight: '500' },
+  daysChipTextActive: { color: '#FFFFFF' },
+  customDaysRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 8,
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  customDaysLabel: { fontSize: 14, color: '#6B7280' },
+  customDaysInput: {
+    flex: 1,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 15,
+    color: '#111827',
+    textAlign: 'center',
+  },
+  customDaysSuffix: { fontSize: 14, color: '#6B7280' },
+  daysPickerActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  daysPickerCancel: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+  },
+  daysPickerCancelText: { fontSize: 15, fontWeight: '600', color: '#374151' },
+  daysPickerConfirm: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    backgroundColor: '#4F46E5',
+  },
+  daysPickerConfirmText: { fontSize: 15, fontWeight: '600', color: '#FFFFFF' },
 });

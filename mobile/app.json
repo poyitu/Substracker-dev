@@ -3,19 +3,23 @@
     "name": "SubsTracker",
     "slug": "substracker",
     "version": "1.0.0",
+    "extra": {
+      "defaultWorkerUrl": "https://substracker.poyitu8.dpdns.org",
+      "router": {},
+      "eas": {
+        "projectId": "8f40120a-d2dc-4e68-a788-30a96242f2cd"
+      }
+    },
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "scheme": "substracker",
     "plugins": [
       "expo-router",
-      [
-        "expo-calendar",
-        {
-          "calendarPermission": "Allow SubsTracker to create reminders in your calendar"
-        }
-      ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-splash-screen",
+      "@react-native-community/datetimepicker",
+      "expo-font"
     ],
     "ios": {
       "supportsTablet": true,
@@ -32,8 +36,11 @@
       },
       "permissions": [
         "READ_CALENDAR",
-        "WRITE_CALENDAR"
-      ]
+        "WRITE_CALENDAR",
+        "android.permission.READ_CALENDAR",
+        "android.permission.WRITE_CALENDAR"
+      ],
+      "package": "com.poyitu.substracker"
     },
     "web": {
       "favicon": "./assets/favicon.png",

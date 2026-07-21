@@ -18,6 +18,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { apiClient } from '../../src/api/client';
 import { useAuth } from '../../src/stores/auth';
+import { readCache, writeCache } from '../../src/lib/cache';
 import type { Subscription } from '../../src/types';
 
 const PRESET_CATEGORIES = [
@@ -42,15 +43,24 @@ export default function SubscriptionsScreen() {
     try {
       const subs = await apiClient.getSubscriptions();
       setSubscriptions(subs);
+      writeCache('subscriptions', subs);
     } catch (err) {
       console.warn('[Subscriptions] 加载失败:', err);
     }
   }, [isLoggedIn]);
 
-  // 每次 Tab 获得焦点时刷新
+  // 每次 Tab 获得焦点时：先显示缓存，再后台刷新
   useFocusEffect(
     useCallback(() => {
+      if (!isLoggedIn) return;
+      let cancelled = false;
+      readCache<Subscription[]>('subscriptions').then((cached) => {
+        if (!cancelled && cached) setSubscriptions(cached);
+      });
       loadSubscriptions();
+      return () => {
+        cancelled = true;
+      };
     }, [loadSubscriptions]),
   );
 

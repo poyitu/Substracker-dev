@@ -117,14 +117,14 @@ class ApiClient {
 
   // ---- Reminder Rules ----
   getReminderRules(subId: string) {
-    return this.request<ReminderRule[]>(`/api/subscriptions/${subId}/reminders`);
+    return this.request<{ rules: ReminderRule[] }>(`/api/subscriptions/${subId}/reminders`).then((res) => res.rules);
   }
 
   updateReminderRules(subId: string, rules: ReminderRule[]) {
-    return this.request<ReminderRule[]>(`/api/subscriptions/${subId}/reminders`, {
+    return this.request<{ rules: ReminderRule[] }>(`/api/subscriptions/${subId}/reminders`, {
       method: 'PUT',
-      body: JSON.stringify(rules),
-    });
+      body: JSON.stringify({ rules }),
+    }).then((res) => res.rules);
   }
 
   // ---- Next Reminder ----
