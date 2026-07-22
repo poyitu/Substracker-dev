@@ -15,6 +15,7 @@ import {
   StatusBar,
   Modal,
   Pressable,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { useState, useEffect } from 'react';
 import { router } from 'expo-router';
@@ -179,10 +180,16 @@ export default function AddScreen() {
       setSaving(false);
     }
   };
+  const Container = KeyboardAvoidingView;
+  const containerExtraProps = Platform.OS === 'android'
+    ? { behavior: 'height' as const }
+    : { behavior: 'padding' as const };
+
   return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
+    <Container style={{ flex: 1 }} {...containerExtraProps}>
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
           <Ionicons name="close" size={24} color="#111827" />
         </TouchableOpacity>
@@ -196,7 +203,10 @@ export default function AddScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.form}>
+      <ScrollView
+        contentContainerStyle={styles.form}
+        keyboardShouldPersistTaps="handled"
+      >
         {/* Name */}
         <View style={styles.field}>
           <Text style={styles.label}>名称 *</Text>
@@ -503,6 +513,7 @@ export default function AddScreen() {
         </Pressable>
       </Modal>
     </View>
+    </Container>
   );
 }
 

@@ -2,7 +2,7 @@
 // 登录页 — 登录成功后由根布局条件渲染自动切换
 // ============================================================
 
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, StatusBar } from 'react-native';
 import { useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../src/stores/auth';
@@ -45,7 +45,8 @@ export default function LoginScreen() {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior="padding"
+      keyboardVerticalOffset={Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 0}
     >
       <View style={styles.content}>
         <View style={styles.logoArea}>
