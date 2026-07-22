@@ -188,6 +188,10 @@ export function isUpcomingSubscription(
       unit = r.unit === 'hour' ? 'hour' : 'day';
       value = Number(r.value);
     }
+    // 当规则窗口为 0 天（仅"到期当天"提醒），即将到期列表仍按 7 天窗口展示
+    if (!isNaN(value) && value === 0) {
+      value = 7;
+    }
   } else {
     unit = sub.reminderUnit || 'day';
     value = Number(sub.reminderValue ?? sub.reminderDays ?? 7);
