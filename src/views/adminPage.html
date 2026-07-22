@@ -1391,14 +1391,16 @@ const lunarBiz = {
       if (rules.length > 0) {
         const r = rules[0];
         if (r.type === 'on_expiry') {
-          return { unit: 'day', value: 0, displayText: '仅到期' };
+          // value=0 仅表示到期当天提醒，但即将到期列表仍按 7 天展示
+          return { unit: 'day', value: 7, displayText: '仅到期' };
         }
         if (r.type === 'on_expiry_at') {
           const hours = Array.isArray(r.hours) ? r.hours.filter((h) => h >= 0 && h <= 23) : [];
           const displayText = hours.length > 0
             ? '到期日 ' + hours.map((h) => String(h).padStart(2, '0') + ':00').join('、')
             : '到期日指定时间';
-          return { unit: 'day', value: 0, displayText };
+          // value=0 仅表示到期当天提醒，但即将到期列表仍按 7 天展示
+          return { unit: 'day', value: 7, displayText };
         }
         const unit = r.unit === 'hour' ? 'hour' : 'day';
         const value = Number(r.value);
