@@ -14,6 +14,7 @@ import {
   Alert,
   ActivityIndicator,
   Platform,
+  StatusBar,
   Modal,
   Pressable,
 } from 'react-native';
@@ -500,7 +501,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: Platform.OS === 'ios' ? 60 : 16,
+    paddingTop: Platform.OS === 'ios' ? 60 : (StatusBar.currentHeight || 24) + 12,
     paddingHorizontal: 20,
     paddingBottom: 12,
     borderBottomWidth: 1,
