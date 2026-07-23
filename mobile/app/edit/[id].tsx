@@ -147,13 +147,8 @@ export default function EditScreen() {
         if (mode === 'no_renew') {
           setAutoRenew(false);
         }
-        // 加载提醒规则
-        try {
-          const rules = await apiClient.getReminderRules(id);
-          if (Array.isArray(rules)) setReminderRules(rules);
-        } catch {
-          // 暂无规则或加载失败，保持空数组
-        }
+        // reminderRules 已由后端拼入 GET /api/subscriptions/:id 响应，无需额外请求
+        if (Array.isArray(sub.reminderRules)) setReminderRules(sub.reminderRules);
       } catch (err: any) {
         Alert.alert('加载失败', err.message);
         router.back();
