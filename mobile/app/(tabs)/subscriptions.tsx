@@ -19,6 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { apiClient } from '../../src/api/client';
 import { useAuth } from '../../src/stores/auth';
 import { readCache, writeCache } from '../../src/lib/cache';
+import SwipeableRow from '../../src/components/SwipeableRow';
 import type { Subscription } from '../../src/types';
 
 const PRESET_CATEGORIES = [
@@ -153,31 +154,28 @@ export default function SubscriptionsScreen() {
         data={filtered}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <TouchableOpacity
-            style={styles.subItem}
+          <SwipeableRow
+            onDelete={() => handleDelete(item)}
             onPress={() => router.push(`/edit/${item.id}`)}
           >
-            <View style={styles.subLeft}>
-              <View
-                style={[styles.dot, item.isActive ? styles.dotActive : styles.dotInactive]}
-              />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.subName}>{item.name}</Text>
-                <Text style={styles.subMeta}>
-                  {item.category || '未分类'} · {item.periodValue || 1}
-                  {item.periodUnit === 'month' ? '月' : item.periodUnit === 'year' ? '年' : '天'}
-                </Text>
+            <View style={styles.subItem}>
+              <View style={styles.subLeft}>
+                <View
+                  style={[styles.dot, item.isActive ? styles.dotActive : styles.dotInactive]}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.subName}>{item.name}</Text>
+                  <Text style={styles.subMeta}>
+                    {item.category || '未分类'} · {item.periodValue || 1}
+                    {item.periodUnit === 'month' ? '月' : item.periodUnit === 'year' ? '年' : '天'}
+                  </Text>
+                </View>
               </View>
-            </View>
-            <View style={styles.subRight}>
               <Text style={styles.subExpiry}>
                 {new Date(item.expiryDate).toLocaleDateString('zh-CN')}
               </Text>
-              <TouchableOpacity onPress={() => handleDelete(item)}>
-                <Ionicons name="trash-outline" size={18} color="#EF4444" />
-              </TouchableOpacity>
             </View>
-          </TouchableOpacity>
+          </SwipeableRow>
         )}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         contentContainerStyle={styles.listContent}
@@ -264,8 +262,7 @@ const styles = StyleSheet.create({
   dotInactive: { backgroundColor: '#D1D5DB' },
   subName: { fontSize: 15, fontWeight: '600', color: '#111827' },
   subMeta: { fontSize: 12, color: '#6B7280', marginTop: 2 },
-  subRight: { flexDirection: 'row', alignItems: 'center' },
-  subExpiry: { fontSize: 13, color: '#6B7280', marginRight: 4 },
+  subExpiry: { fontSize: 13, color: '#6B7280' },
   emptyText: { fontSize: 14, color: '#9CA3AF', textAlign: 'center', marginTop: 40 },
   fab: {
     position: 'absolute',
