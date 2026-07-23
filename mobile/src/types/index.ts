@@ -26,6 +26,8 @@ export interface Subscription {
   reminderHours?: number;
   /** 提醒规则（v3 结构化规则） */
   reminderRules?: ReminderRule[];
+  /** 是否同步到系统日历（默认 false，用户手动开启） */
+  syncToCalendar?: boolean;
   /** 支付记录 */
   paymentHistory?: PaymentRecord[];
   lastPaymentDate?: string;

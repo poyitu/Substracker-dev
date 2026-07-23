@@ -7,7 +7,8 @@ import {
   manualRenewSubscription,
   deletePaymentRecord,
   updatePaymentRecord,
-  toggleSubscriptionStatus
+  toggleSubscriptionStatus,
+  toggleCalendarSync
 } from '../../data/subscriptions.js';
 import { getConfig } from '../../data/config.js';
 import { sendNotificationToAllChannels } from '../../services/notify/index.js';
@@ -196,6 +197,12 @@ async function handleSubscriptions(request, env, path) {
     if (method === 'PUT') {
       const subscription = await request.json();
       const result = await updateSubscription(id, subscription, env);
+      return new Response(JSON.stringify(result), { status: result.success ? 200 : 400, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    if (parts[3] === 'calendar-sync' && method === 'POST') {
+      const body = await request.json();
+      const result = await toggleCalendarSync(id, !!body.enabled, env);
       return new Response(JSON.stringify(result), { status: result.success ? 200 : 400, headers: { 'Content-Type': 'application/json' } });
     }
 

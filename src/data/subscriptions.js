@@ -605,6 +605,19 @@ async function updatePaymentRecord(subscriptionId, paymentId, paymentData, env) 
  * @param {boolean} isActive
  * @param {any} env
  */
+async function toggleCalendarSync(id, enabled, env) {
+  try {
+    const existing = await subRepo.getById(env, id);
+    if (!existing) return { success: false, message: '订阅不存在' };
+    const updated = { ...existing, syncToCalendar: !!enabled, updatedAt: new Date().toISOString() };
+    await subRepo.save(env, updated);
+    return { success: true, subscription: updated };
+  } catch (error) {
+    console.error('[subscriptions] 切换日历同步失败:', error);
+    return { success: false, message: '更新日历同步状态失败' };
+  }
+}
+
 async function toggleSubscriptionStatus(id, isActive, env) {
   try {
     const existing = await subRepo.getById(env, id);
@@ -633,5 +646,6 @@ export {
   manualRenewSubscription,
   deletePaymentRecord,
   updatePaymentRecord,
-  toggleSubscriptionStatus
+  toggleSubscriptionStatus,
+  toggleCalendarSync
 };

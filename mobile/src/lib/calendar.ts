@@ -11,6 +11,7 @@ import type { Subscription, ReminderRule } from '../types';
 const CALENDAR_NAME = 'SubsTracker';
 const CALENDAR_ID_KEY = 'substracker_calendar_id';
 const CALENDAR_COLOR = '#4F46E5';
+const ALARM_MINUTES_KEY = 'substracker_calendar_alarm_minutes';
 
 /** 请求日历权限 */
 export async function requestCalendarPermission(): Promise<boolean> {
@@ -106,9 +107,21 @@ function getEventTitle(sub: Subscription, rule: ReminderRule): string {
   return `⚠️ ${sub.name} 今天到期`;
 }
 
+/** 保存闹钟设置 */
+export async function saveAlarmMinutes(minutes: number): Promise<void> {
+  await AsyncStorage.setItem(ALARM_MINUTES_KEY, String(minutes));
+}
+
+/** 读取闹钟设置 */
+export async function getAlarmMinutes(): Promise<number> {
+  const raw = await AsyncStorage.getItem(ALARM_MINUTES_KEY);
+  return raw ? Number(raw) : 0;
+}
+
 /** 同步日历：删除旧事件 → 按规则重新创建 */
 export async function syncCalendar(
   subscriptions: Subscription[],
+  alarmMinutes: number = 0,
 ): Promise<{ eventsCreated: number; errors: number }> {
   const calId = await getOrCreateCalendar();
   if (!calId) throw new Error('无法获取或创建日历');
@@ -126,12 +139,13 @@ export async function syncCalendar(
     // 清空失败不阻塞
   }
 
-  // 重新生成事件
+  // 重新生成事件 — 仅同步开启了 syncToCalendar 的订阅
   let eventsCreated = 0;
   let errors = 0;
 
   for (const sub of subscriptions) {
     if (!sub.isActive) continue;
+    if (!sub.syncToCalendar) continue;
 
     const rules = (sub.reminderRules || []).filter((r) => r.isEnabled !== false);
     if (rules.length === 0) continue;
@@ -143,11 +157,16 @@ export async function syncCalendar(
       try {
         const { start, end } = getRuleEventTime(expiryDate, rule);
 
+        const alarms: Calendar.Alarm[] = [];
+        if (alarmMinutes > 0) {
+          alarms.push({ relativeOffset: -alarmMinutes });
+        }
+
         await Calendar.createEventAsync(calId, {
           title: getEventTitle(sub, rule),
           startDate: start,
           endDate: end,
-          alarms: [{ relativeOffset: 0 }],
+          alarms,
           notes: `分类: ${sub.category || '未分类'}\n周期: ${sub.periodValue || 1}${sub.periodUnit === 'month' ? '月' : sub.periodUnit === 'year' ? '年' : '天'}`,
         });
 

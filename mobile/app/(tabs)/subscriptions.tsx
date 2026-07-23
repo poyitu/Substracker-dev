@@ -12,6 +12,7 @@ import {
   TextInput,
   RefreshControl,
   Alert,
+  Switch,
 } from 'react-native';
 import { useState, useCallback } from 'react';
 import { router, useFocusEffect } from 'expo-router';
@@ -82,6 +83,22 @@ export default function SubscriptionsScreen() {
     }
     return true;
   });
+
+  const handleCalendarToggle = async (sub: Subscription) => {
+    const newVal = !sub.syncToCalendar;
+    // 乐观更新
+    setSubscriptions((prev) =>
+      prev.map((s) => (s.id === sub.id ? { ...s, syncToCalendar: newVal } : s)),
+    );
+    try {
+      await apiClient.toggleCalendarSync(sub.id, newVal);
+    } catch {
+      // 回滚
+      setSubscriptions((prev) =>
+        prev.map((s) => (s.id === sub.id ? { ...s, syncToCalendar: !newVal } : s)),
+      );
+    }
+  };
 
   const handleDelete = (sub: Subscription) => {
     Alert.alert('删除订阅', `确定要删除「${sub.name}」吗？`, [
@@ -171,9 +188,18 @@ export default function SubscriptionsScreen() {
                   </Text>
                 </View>
               </View>
-              <Text style={styles.subExpiry}>
-                {new Date(item.expiryDate).toLocaleDateString('zh-CN')}
-              </Text>
+              <View style={styles.subRight}>
+                <Text style={styles.subExpiry}>
+                  {new Date(item.expiryDate).toLocaleDateString('zh-CN')}
+                </Text>
+                <Switch
+                  value={!!item.syncToCalendar}
+                  onValueChange={() => handleCalendarToggle(item)}
+                  trackColor={{ false: '#D1D5DB', true: '#818CF8' }}
+                  thumbColor={item.syncToCalendar ? '#4F46E5' : '#F9FAFB'}
+                  style={styles.calendarSwitch}
+                />
+              </View>
             </View>
           </SwipeableRow>
         )}
@@ -262,7 +288,9 @@ const styles = StyleSheet.create({
   dotInactive: { backgroundColor: '#D1D5DB' },
   subName: { fontSize: 15, fontWeight: '600', color: '#111827' },
   subMeta: { fontSize: 12, color: '#6B7280', marginTop: 2 },
+  subRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   subExpiry: { fontSize: 13, color: '#6B7280' },
+  calendarSwitch: { transform: [{ scaleX: 0.75 }, { scaleY: 0.75 }] },
   emptyText: { fontSize: 14, color: '#9CA3AF', textAlign: 'center', marginTop: 40 },
   fab: {
     position: 'absolute',

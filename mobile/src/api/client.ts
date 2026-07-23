@@ -94,6 +94,16 @@ class ApiClient {
     });
   }
 
+  toggleCalendarSync(id: string, enabled: boolean) {
+    return this.request<{ success: boolean; subscription: Subscription }>(
+      `/api/subscriptions/${id}/calendar-sync`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ enabled }),
+      },
+    );
+  }
+
   getDashboardStats() {
     return this.request<{ success: boolean; data: any }>('/api/dashboard/stats').then((res) => {
       if (!res.success || !res.data) throw new Error('获取统计数据失败');

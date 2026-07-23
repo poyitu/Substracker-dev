@@ -2,40 +2,50 @@
 // 日历同步
 // ============================================================
 
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Platform } from 'react-native';
-import { useState, useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Platform, TextInput } from 'react-native';
+import { useState, useCallback, useEffect } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { apiClient } from '../../src/api/client';
 import { useAuth } from '../../src/stores/auth';
-import { requestCalendarPermission, syncCalendar } from '../../src/lib/calendar';
+import { requestCalendarPermission, syncCalendar, saveAlarmMinutes, getAlarmMinutes } from '../../src/lib/calendar';
 import type { Subscription } from '../../src/types';
 
 export default function CalendarScreen() {
   const { isLoggedIn } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [alarmMinutes, setAlarmMinutes] = useState(0);
   const [lastSync, setLastSync] = useState<{ time: Date; events: number; errors: number } | null>(null);
+
+  useEffect(() => {
+    getAlarmMinutes().then(setAlarmMinutes);
+  }, []);
+
+  const updateAlarm = async (v: string) => {
+    const n = v === '' ? 0 : parseInt(v, 10);
+    if (isNaN(n) || n < 0) return;
+    setAlarmMinutes(n);
+    await saveAlarmMinutes(n);
+  };
 
   const loadAndSync = useCallback(async () => {
     if (!isLoggedIn) return;
     setLoading(true);
     try {
-      // 权限检查
       const permitted = await requestCalendarPermission();
       if (!permitted) {
         Alert.alert('权限不足', '需要日历权限才能同步提醒');
         return;
       }
 
-      // 加载订阅
       const subs: Subscription[] = await apiClient.getSubscriptions();
-      if (subs.length === 0) {
-        Alert.alert('提示', '暂无订阅数据');
+      const withCalendar = subs.filter((s) => s.syncToCalendar);
+      if (withCalendar.length === 0) {
+        Alert.alert('提示', '没有开启日历同步的订阅');
         return;
       }
 
-      // 同步
-      const result = await syncCalendar(subs);
+      const result = await syncCalendar(subs, alarmMinutes);
       setLastSync({ time: new Date(), events: result.eventsCreated, errors: result.errors });
 
       const msg =
@@ -48,12 +58,10 @@ export default function CalendarScreen() {
     } finally {
       setLoading(false);
     }
-  }, [isLoggedIn]);
+  }, [isLoggedIn, alarmMinutes]);
 
   useFocusEffect(
-    useCallback(() => {
-      // 首次进入不自动同步，让用户手动触发
-    }, []),
+    useCallback(() => {}, []),
   );
 
   return (
@@ -80,10 +88,27 @@ export default function CalendarScreen() {
             <Ionicons name="sync-outline" size={48} color="#4F46E5" />
             <Text style={styles.statusTitle}>未同步</Text>
             <Text style={styles.statusDetail}>
-              点击下方按钮将订阅提醒同步到系统日历
+              在订阅列表中开启日历图标，然后点此同步
             </Text>
           </View>
         )}
+
+        {/* 闹钟设置 */}
+        <View style={styles.alarmCard}>
+          <Ionicons name="alarm-outline" size={18} color="#6B7280" />
+          <Text style={styles.alarmLabel}>事件开始时提前</Text>
+          <View style={styles.alarmInputRow}>
+            <TextInput
+              style={styles.alarmInput}
+              value={alarmMinutes === 0 ? '' : String(alarmMinutes)}
+              onChangeText={updateAlarm}
+              keyboardType="number-pad"
+              placeholder="0"
+              placeholderTextColor="#9CA3AF"
+            />
+            <Text style={styles.alarmSuffix}>分钟提醒</Text>
+          </View>
+        </View>
 
         <View style={styles.infoCard}>
           <Text style={styles.infoTitle}>同步说明</Text>
@@ -93,13 +118,11 @@ export default function CalendarScreen() {
           </View>
           <View style={styles.infoRow}>
             <Ionicons name="refresh-outline" size={16} color="#6B7280" />
-            <Text style={styles.infoText}>
-              每次同步先清空再重建，保证数据一致
-            </Text>
+            <Text style={styles.infoText}>每次同步先清空再重建，保证数据一致</Text>
           </View>
           <View style={styles.infoRow}>
-            <Ionicons name="list-outline" size={16} color="#6B7280" />
-            <Text style={styles.infoText}>每条提醒规则对应一个日历事件</Text>
+            <Ionicons name="toggle-outline" size={16} color="#6B7280" />
+            <Text style={styles.infoText}>仅同步订阅列表中开启了日历开关的订阅</Text>
           </View>
           {Platform.OS === 'android' && (
             <View style={styles.infoRow}>
@@ -161,6 +184,32 @@ const styles = StyleSheet.create({
     marginTop: 8,
     textAlign: 'center',
   },
+  alarmCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    width: '100%',
+    marginBottom: 12,
+    gap: 8,
+  },
+  alarmLabel: { fontSize: 14, color: '#374151', fontWeight: '500' },
+  alarmInputRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  alarmInput: {
+    width: 56,
+    textAlign: 'center',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    fontSize: 15,
+    color: '#111827',
+    backgroundColor: '#F9FAFB',
+  },
+  alarmSuffix: { fontSize: 13, color: '#6B7280' },
   infoCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
