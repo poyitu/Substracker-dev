@@ -42,6 +42,7 @@ export default function AddScreen() {
   const [expiryDate, setExpiryDate] = useState(new Date());
   const [subscriptionMode, setSubscriptionMode] = useState<'cycle' | 'reset' | 'no_renew'>('cycle');
   const [autoRenew, setAutoRenew] = useState(false);
+  const [syncToCalendar, setSyncToCalendar] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [saving, setSaving] = useState(false);
   const [reminderRules, setReminderRules] = useState<ReminderRule[]>([]);
@@ -164,6 +165,7 @@ export default function AddScreen() {
         name: name.trim(),
         isActive: true,
         autoRenew,
+        syncToCalendar,
         subscriptionMode,
         expiryDate: expiryDate.toISOString(),
         category,
@@ -350,6 +352,20 @@ export default function AddScreen() {
             disabled={subscriptionMode === 'no_renew'}
             trackColor={{ false: '#D1D5DB', true: '#818CF8' }}
             thumbColor={autoRenew ? '#4F46E5' : '#F9FAFB'}
+          />
+        </View>
+
+        {/* Sync To Calendar */}
+        <View style={styles.switchRow}>
+          <View style={{ flex: 1, paddingRight: 8 }}>
+            <Text style={styles.label}>同步到系统日历</Text>
+            <Text style={styles.switchHint}>在手机自带日历中创建到期提醒日程</Text>
+          </View>
+          <Switch
+            value={syncToCalendar}
+            onValueChange={setSyncToCalendar}
+            trackColor={{ false: '#D1D5DB', true: '#818CF8' }}
+            thumbColor={syncToCalendar ? '#4F46E5' : '#F9FAFB'}
           />
         </View>
 

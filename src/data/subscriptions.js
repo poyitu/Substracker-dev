@@ -192,6 +192,7 @@ async function createSubscription(subscription, env) {
           : [],
       isActive: subscription.isActive !== false,
       autoRenew: subscriptionMode === 'no_renew' ? false : subscription.autoRenew !== false,
+      syncToCalendar: !!subscription.syncToCalendar,
       useLunar: useLunar,
       emailFrom: subscription.emailFrom || '',
       emailFromName: subscription.emailFromName || '',
@@ -348,6 +349,10 @@ async function updateSubscription(id, subscription, env) {
             : existing.autoRenew !== undefined
               ? existing.autoRenew
               : true,
+      syncToCalendar:
+        subscription.syncToCalendar !== undefined
+          ? !!subscription.syncToCalendar
+          : existing.syncToCalendar || false,
       useLunar: useLunar,
       emailFrom: subscription.emailFrom !== undefined ? subscription.emailFrom : existing.emailFrom || '',
       emailFromName: subscription.emailFromName !== undefined ? subscription.emailFromName : existing.emailFromName || '',
