@@ -19,7 +19,13 @@
       "expo-secure-store",
       "expo-splash-screen",
       "@react-native-community/datetimepicker",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "SubsTracker 需要访问系统日历以写入订阅到期提醒日程。"
+        }
+      ]
     ],
     "ios": {
       "supportsTablet": true,
