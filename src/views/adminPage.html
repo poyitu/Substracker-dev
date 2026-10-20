@@ -3199,6 +3199,7 @@ const lunarBiz = {
 		
 		// 使用与公历相同的方式创建日期  
 		const expiry = new Date(startDate); // 从原始日期开始  
+		expiry.setDate(1); // 先归 1 号，避免改月时因该月没有当前日而溢出到下个月
 		expiry.setFullYear(solar.year);  
 		expiry.setMonth(solar.month - 1);  
 		expiry.setDate(solar.day);  
@@ -3220,10 +3221,17 @@ const lunarBiz = {
 		const expiry = new Date(start);
 		if (periodUnit === 'day') {
 		  expiry.setDate(start.getDate() + periodValue);
-		} else if (periodUnit === 'month') {
-		  expiry.setMonth(start.getMonth() + periodValue);
-		} else if (periodUnit === 'year') {
-		  expiry.setFullYear(start.getFullYear() + periodValue);
+		} else if (periodUnit === 'month' || periodUnit === 'year') {
+		  // 月末 clamp：先把日归 1 再改月/年，避免 1-31 + 1 月溢出成 3-3
+		  const dayOfMonth = start.getDate();
+		  expiry.setDate(1);
+		  if (periodUnit === 'month') {
+		    expiry.setMonth(start.getMonth() + periodValue);
+		  } else {
+		    expiry.setFullYear(start.getFullYear() + periodValue);
+		  }
+		  const daysInTargetMonth = new Date(expiry.getFullYear(), expiry.getMonth() + 1, 0).getDate();
+		  expiry.setDate(Math.min(dayOfMonth, daysInTargetMonth));
 		}
 		document.getElementById('expiryDate').value = expiry.getFullYear() + '-' + String(expiry.getMonth() + 1).padStart(2, '0') + '-' + String(expiry.getDate()).padStart(2, '0');
 		debugLog('start:', start);
@@ -3336,6 +3344,7 @@ const lunarBiz = {
     async function editSubscription(e) {
       const button = e.target.closest('button');
       const id = button ? button.dataset.id : (e.target.dataset.id || e.target.parentElement.dataset.id);
+      const originalContent = button ? button.innerHTML : '';
       if (button) { button.disabled = true; button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; }
       
       try {
@@ -3390,6 +3399,7 @@ const lunarBiz = {
           
           clearFieldErrors();
           loadLunarPreference();
+          document.getElementById('modalTitle').textContent = '编辑订阅';
           document.getElementById('subscriptionModal').classList.remove('hidden');
           document.body.classList.add('overflow-hidden'); // 禁止背景滚动
           
@@ -3410,7 +3420,7 @@ const lunarBiz = {
         showToast('获取订阅信息失败', 'error');
         isEditingLoading = false;
       } finally {
-        if (button) { button.disabled = false; button.innerHTML = '<i class="fas fa-edit"></i>'; }
+        if (button) { button.disabled = false; button.innerHTML = originalContent; }
       }
     }
     

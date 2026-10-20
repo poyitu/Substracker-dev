@@ -336,6 +336,41 @@ describe('调度器 - 自动续订', () => {
     // @ts-ignore
     expect(next.paymentHistory[next.paymentHistory.length - 1].type).toBe('auto');
   });
+
+  it('续订后到期日精确落在「用户时区下一个周期零点」', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-24T00:00:00.000Z')); // 北京 2026-05-24 08:00
+
+    await setConfig({
+      JWT_SECRET: 's',
+      TIMEZONE: 'Asia/Shanghai',
+      NOTIFICATION_HOURS: [],
+      ENABLED_NOTIFIERS: []
+    });
+    await subRepo.save(testEnv, {
+      id: 's-renew-exact',
+      name: 'RenewExact',
+      isActive: true,
+      autoRenew: true,
+      subscriptionMode: 'cycle',
+      expiryDate: '2026-02-28T16:00:00.000Z', // 北京 2026-03-01 00:00
+      periodValue: 1,
+      periodUnit: 'month',
+      currency: 'CNY',
+      paymentHistory: []
+    });
+
+    const log = /** @type {import('../../src/data/scheduler-logs.repo.js').SchedulerLogEntry} */ (await checkExpiringSubscriptions(testEnv));
+    expect(log.autoRenewedCount).toBe(1);
+
+    const next = await subRepo.getById(testEnv, 's-renew-exact');
+    if (!next) {
+      throw new Error('Renew subscription not found');
+    }
+    // 北京 3-01 → 4-01 → 5-01 → 6-01（now 为北京 5-24，补到 6-01 后停止）
+    // @ts-ignore
+    expect(next.expiryDate).toBe('2026-05-31T16:00:00.000Z');
+  });
 });
 
 describe('调度器 - 写入日志', () => {

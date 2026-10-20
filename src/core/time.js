@@ -373,10 +373,20 @@ export function addCalendarPeriodInTimezone(value, amount, unit, timezone = 'UTC
   const temp = new Date(Date.UTC(parts.year, parts.month - 1, parts.day, 0, 0, 0));
   if (unit === 'day') {
     temp.setUTCDate(temp.getUTCDate() + amount);
-  } else if (unit === 'month') {
-    temp.setUTCMonth(temp.getUTCMonth() + amount);
-  } else if (unit === 'year') {
-    temp.setUTCFullYear(temp.getUTCFullYear() + amount);
+  } else if (unit === 'month' || unit === 'year') {
+    // 月末 clamp：先把日归 1 再改月/年，避免 1-31 + 1 月溢出成 3-3
+    // （JS 的 setUTCMonth / setUTCFullYear 对不存在的日期会向下溢出，业务上应落到目标月末）
+    const dayOfMonth = temp.getUTCDate();
+    temp.setUTCDate(1);
+    if (unit === 'month') {
+      temp.setUTCMonth(temp.getUTCMonth() + amount);
+    } else {
+      temp.setUTCFullYear(temp.getUTCFullYear() + amount);
+    }
+    const daysInTargetMonth = new Date(
+      Date.UTC(temp.getUTCFullYear(), temp.getUTCMonth() + 1, 0)
+    ).getUTCDate();
+    temp.setUTCDate(Math.min(dayOfMonth, daysInTargetMonth));
   }
 
   const ts = getTimestampForTimezoneParts(

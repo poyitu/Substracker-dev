@@ -36,7 +36,8 @@ import * as schedulerLogsRepo from '../data/scheduler-logs.repo.js';
 import {
   MS_PER_HOUR,
   getNowInTimezone,
-  getDaysBetween
+  getDaysBetween,
+  addCalendarPeriodInTimezone
 } from '../core/time.js';
 import { formatNotificationContent } from './notify/reminder.js';
 import { dispatch } from './notify/dispatch.js';
@@ -319,10 +320,11 @@ function autoRenew(sub, now, timezone, config) {
     }
   } else {
     while (expiryDate <= now) {
-      if (mode === 'reset') expiryDate = new Date(now);
-      if (sub.periodUnit === 'day') expiryDate.setDate(expiryDate.getDate() + sub.periodValue);
-      else if (sub.periodUnit === 'month') expiryDate.setMonth(expiryDate.getMonth() + sub.periodValue);
-      else if (sub.periodUnit === 'year') expiryDate.setFullYear(expiryDate.getFullYear() + sub.periodValue);
+      // 必须在「用户时区」的日期语义下推进，不能用 Date 的本地时区方法：
+      // Cloudflare Worker 的运行时时区恒为 UTC，而 expiryDate 存的是用户时区零点
+      // （如北京 00:00 = UTC 前一天 16:00），裸 setMonth/setFullYear 会跨月错位。
+      const base = mode === 'reset' ? new Date(now) : expiryDate;
+      expiryDate = addCalendarPeriodInTimezone(base, sub.periodValue, sub.periodUnit, timezone);
       periodsAdded++;
       if (periodsAdded > 120) break;
     }

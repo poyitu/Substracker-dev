@@ -28,7 +28,8 @@ import {
   getCurrentTimeInTimezone,
   getTimestampInTimezone,
   convertUTCToTimezone,
-  extractTimezone
+  extractTimezone,
+  addCalendarPeriodInTimezone
 } from '../../src/core/time.js';
 
 describe('isValidTimezone', () => {
@@ -312,5 +313,56 @@ describe('常量', () => {
   it('MS_PER_HOUR 与 MS_PER_DAY', () => {
     expect(MS_PER_HOUR).toBe(3600_000);
     expect(MS_PER_DAY).toBe(86_400_000);
+  });
+});
+
+describe('addCalendarPeriodInTimezone（自动续订核心）', () => {
+  // 这些用例的期望值只由「入参 + timezone 语义」决定，与测试进程自身时区无关。
+  // 旧实现用裸 setMonth/setFullYear（跟随进程时区），在 Cloudflare Worker（TZ=UTC）
+  // 下会把北京 3-01 到期算成 3-29，故此处必须钉住精确值。
+
+  it('跨月不漂移：北京 3-01 + 1 月 → 北京 4-01', () => {
+    const next = addCalendarPeriodInTimezone(
+      '2026-02-28T16:00:00.000Z', // 北京 2026-03-01 00:00
+      1,
+      'month',
+      'Asia/Shanghai'
+    );
+    expect(next.toISOString()).toBe('2026-03-31T16:00:00.000Z'); // 北京 2026-04-01 00:00
+  });
+
+  it('月末 clamp：北京 1-31 + 1 月 → 2-28（不溢出到 3-3）', () => {
+    const next = addCalendarPeriodInTimezone(
+      '2026-01-30T16:00:00.000Z', // 北京 2026-01-31 00:00
+      1,
+      'month',
+      'Asia/Shanghai'
+    );
+    expect(next.toISOString()).toBe('2026-02-27T16:00:00.000Z'); // 北京 2026-02-28 00:00
+  });
+
+  it('闰日 clamp：北京 2028-02-29 + 1 年 → 2029-02-28', () => {
+    const next = addCalendarPeriodInTimezone(
+      '2028-02-28T16:00:00.000Z', // 北京 2028-02-29 00:00
+      1,
+      'year',
+      'Asia/Shanghai'
+    );
+    expect(next.toISOString()).toBe('2029-02-27T16:00:00.000Z'); // 北京 2029-02-28 00:00
+  });
+
+  it('UTC 语义下同样 clamp（与进程时区无关）', () => {
+    const next = addCalendarPeriodInTimezone('2026-01-31T00:00:00.000Z', 1, 'month', 'UTC');
+    expect(next.toISOString()).toBe('2026-02-28T00:00:00.000Z');
+  });
+
+  it('不跨月的常规场景保持不变：北京 10-20 + 1 月 → 11-20', () => {
+    const next = addCalendarPeriodInTimezone('2026-10-19T16:00:00.000Z', 1, 'month', 'Asia/Shanghai');
+    expect(next.toISOString()).toBe('2026-11-19T16:00:00.000Z');
+  });
+
+  it('day 单位按用户时区的日期推进', () => {
+    const next = addCalendarPeriodInTimezone('2026-02-28T16:00:00.000Z', 1, 'day', 'Asia/Shanghai');
+    expect(next.toISOString()).toBe('2026-03-01T16:00:00.000Z'); // 北京 2026-03-02 00:00
   });
 });
