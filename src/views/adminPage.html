@@ -3351,6 +3351,9 @@ const lunarBiz = {
         const response = await apiFetch('/api/subscriptions/' + id);
         const subscription = await response.json();
         
+          // 关键：回填 hidden 的 subscriptionId，否则提交时 id 为空会走「新增」分支
+          document.getElementById('subscriptionId').value = subscription.id || id;
+          document.getElementById('name').value = subscription.name || '';
           document.getElementById('subscriptionMode').value = subscription.subscriptionMode || 'cycle'; // 默认为 cycle
           document.getElementById('customType').value = subscription.customType || '';
           document.getElementById('category').value = subscription.category || '';
@@ -3363,6 +3366,7 @@ const lunarBiz = {
             document.getElementById('autoRenew').checked = false;
             document.getElementById('autoRenew').disabled = true;
           }
+          document.getElementById('startDate').value = subscription.startDate ? formatDateInputInTimezone(subscription.startDate, globalTimezone) : '';
           document.getElementById('expiryDate').value = subscription.expiryDate ? formatDateInputInTimezone(subscription.expiryDate, globalTimezone) : '';
           document.getElementById('periodValue').value = subscription.periodValue || 1;
           document.getElementById('periodUnit').value = subscription.periodUnit || 'month';
@@ -3902,25 +3906,11 @@ const lunarBiz = {
 
     // 编辑订阅时拉取规则（钩在 editSubscription / subscription detail 加载之后）
     (function () {
-      const originalEditSubscription = window.editSubscription;
-      // editSubscription 是顶层 async 函数；通过点击事件代理来钩入更稳。
-      // 这里改为：每次在 subscriptionId 字段被填值后异步 GET 规则。
+      // editSubscription 会回填 subscriptionId；下面用轮询检测该值变化并拉取提醒规则。
+      // （原 MutationObserver 方案是死代码：对 input.value 赋值不产生 DOM mutation，
+      //   且 observer.observe 调用时缺参数，故一并移除。）
       const subIdField = document.getElementById('subscriptionId');
       if (!subIdField) return;
-      const observer = new MutationObserver(() => {
-        const id = subIdField.value;
-        if (!id) return;
-        fetch('/api/subscriptions/' + id + '/reminders', { credentials: 'same-origin' })
-          .then(r => r.ok ? r.json() : null)
-          .then(data => {
-            if (data && Array.isArray(data.rules)) {
-              if (window.ReminderRulesEditor) window.ReminderRulesEditor.setRules(data.rules);
-            }
-          })
-          .catch(() => { /* ignore */ });
-      });
-      // 观察 value 变化（input 元素需要 listen 'input' / 'change'，但我们也用 setInterval 兜底）
-      subIdField.addEventListener('change', () => observer.observe);
       // 主动轮询：当 modal 不隐藏并且 subscriptionId 有值时同步一次
       let lastId = '';
       setInterval(() => {
